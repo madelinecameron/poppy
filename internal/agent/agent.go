@@ -13,6 +13,7 @@ import (
 	"github.com/mads/poppy/internal/collect"
 	"github.com/mads/poppy/internal/config"
 	"github.com/mads/poppy/internal/hub"
+	"github.com/mads/poppy/internal/mirror"
 	"github.com/mads/poppy/internal/model"
 	"github.com/mads/poppy/internal/scan"
 	"github.com/mads/poppy/internal/snapshot"
@@ -39,6 +40,7 @@ type Report struct {
 	Unpushed  int
 	Snapshots int
 	Pruned    int
+	Synced    int
 	Duration  time.Duration
 	Pushed    bool
 	Err       error
@@ -74,6 +76,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	sort.Slice(repos, func(i, j int) bool { return repos[i].Path < repos[j].Path })
 
 	snapshots, pruned := a.capture(ctx, repos)
+	synced := a.sync(ctx, repos)
 
 	seq := a.Store.NextSeq(a.Config.Machine)
 	for i := range repos {
@@ -104,6 +107,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		Repos:     len(repos),
 		Snapshots: snapshots,
 		Pruned:    pruned,
+		Synced:    synced,
 		Duration:  time.Since(start),
 		Pushed:    pushed,
 		Err:       pubErr,
@@ -216,6 +220,63 @@ func (a *Agent) capture(ctx context.Context, repos []model.Repo) (taken, pruned 
 	return taken, pruned
 }
 
+// sync records each repository's latest snapshot on its state document and,
+// when a mirror is configured, pushes that snapshot off the machine. The
+// recorded snapshot is what another machine teleports with grab; Synced marks
+// whether it has actually reached the mirror and can therefore be fetched.
+//
+// A push failure is logged, not fatal: the snapshot is still safe locally and
+// the state document still names it, so a later cycle republishes and retries.
+func (a *Agent) sync(ctx context.Context, repos []model.Repo) int {
+	for i := range repos {
+		r := &repos[i]
+		if r.Broken || r.Head.Branch == "" || !r.Dirty.Any() {
+			continue
+		}
+		if snap, ok := snapshot.Latest(ctx, r.Path, a.Config.Machine, r.Head.Branch); ok {
+			r.Snapshot = &model.SnapshotRef{
+				SHA: snap.SHA, Ref: snap.Ref, Branch: snap.Branch, Taken: snap.Taken,
+			}
+		}
+	}
+
+	mirrorCfg := a.Config.Snapshot.Mirror.MirrorConfig()
+	if !mirrorCfg.Enabled() {
+		return 0
+	}
+
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		synced int
+	)
+	sem := make(chan struct{}, collectWorkers)
+
+	for i := range repos {
+		r := &repos[i]
+		if r.Snapshot == nil || a.Config.Snapshot.ExcludesRepo(r.Path) {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if err := mirror.For(mirrorCfg, r.RepoID).Push(ctx, r.Path, a.Config.Machine); err != nil {
+				a.Log.Warn("snapshot sync failed", "repo", r.Name, "err", err)
+				return
+			}
+			r.Snapshot.Synced = true
+			mu.Lock()
+			synced++
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return synced
+}
+
 // Run performs cycles until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	interval := time.Duration(a.Config.ScanIntervalSeconds) * time.Second
@@ -245,6 +306,7 @@ func (a *Agent) logCycle(r Report, err error) {
 		"unpushed", r.Unpushed,
 		"snapshots", r.Snapshots,
 		"pruned", r.Pruned,
+		"synced", r.Synced,
 		"took", r.Duration.Round(time.Millisecond),
 		"pushed", r.Pushed,
 	}

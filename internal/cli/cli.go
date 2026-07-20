@@ -26,6 +26,7 @@ commands:
   snapshot    capture this repository's uncommitted work now
   timeline    list snapshots recorded for a repository
   restore     restore a snapshot into the working tree
+  grab        teleport uncommitted work from another machine
 
   init        write a starter configuration file
   version     print the agent version
@@ -60,6 +61,8 @@ func Main(ctx context.Context, args []string) int {
 		err = runTimeline(ctx, rest)
 	case "restore":
 		err = runRestore(ctx, rest)
+	case "grab":
+		err = runGrab(ctx, rest)
 	case "daemon":
 		err = runDaemon(ctx, rest)
 	case "init":

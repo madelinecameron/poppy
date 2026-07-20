@@ -103,6 +103,10 @@ func printRow(w io.Writer, row []string, widths map[int]int, style string) {
 	fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
 }
 
+// timeNow is the clock used across CLI rendering, wrapped so it reads clearly
+// at call sites.
+func timeNow() time.Time { return time.Now() }
+
 // relTime renders a duration since t in a compact, scannable form.
 func relTime(t time.Time, now time.Time) string {
 	if t.IsZero() {
