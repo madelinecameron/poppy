@@ -28,6 +28,7 @@ commands:
   restore     restore a snapshot into the working tree
   grab        teleport uncommitted work from another machine
 
+  mcp         serve fleet state to agents over the Model Context Protocol
   init        write a starter configuration file
   version     print the agent version
 
@@ -65,6 +66,8 @@ func Main(ctx context.Context, args []string) int {
 		err = runGrab(ctx, rest)
 	case "daemon":
 		err = runDaemon(ctx, rest)
+	case "mcp":
+		err = runMCP(ctx, rest)
 	case "init":
 		err = runInit(ctx, rest)
 	case "version":

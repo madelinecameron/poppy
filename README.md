@@ -8,9 +8,10 @@ cannot answer from the machine you happen to be sitting at:
 - Where is that branch I started on Tuesday?
 - Does any work exist in exactly one place right now?
 
-Observability, the time machine, off-machine snapshot sync, and `poppy grab`
-are implemented. The MCP server is designed in
-[docs/plans](docs/plans/2026-07-20-poppy-design.md) and lands next.
+Observability, the time machine, off-machine snapshot sync, `poppy grab`, and
+the read-only MCP server are implemented. Live peer queries over Tailscale
+(milestone 2) and a TUI remain; see
+[docs/plans](docs/plans/2026-07-20-poppy-design.md).
 
 ## How it works
 
@@ -170,6 +171,36 @@ Work that exists in exactly one place:
   parent repository was moved or removed. Its contents are invisible to every
   ordinary git command, which makes it the most thoroughly stranded work there
   is. Repair one with `git worktree repair` from the parent repository.
+
+## Ask an agent
+
+`poppy mcp` serves the fleet state to any agent over the Model Context Protocol
+(read-only), so Claude on one machine can answer questions about all of them:
+
+- `fleet_status` — every machine, last seen, and its dirty / unpushed / backed-up counts
+- `dirty_trees` — all uncommitted work fleet-wide, oldest first
+- `find_work` — locate a repository or branch across machines
+- `repo_state` — the full state of one repository
+- `snapshot_history` — the time machine for a repository
+- `where_was_i` — a narrative digest of recent activity
+
+Register it with Claude Code:
+
+```sh
+claude mcp add poppy -- poppy mcp
+```
+
+Or add it to a project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "poppy": { "command": "poppy", "args": ["mcp"] }
+  }
+}
+```
+
+Then ask, from any machine: *"what was I working on on the devbox?"*
 
 ## Configuration
 
