@@ -84,12 +84,22 @@ Hub repo, branch `state`:
 
 ```
 machines/<hostname>/manifest.json          # OS, agent version, heartbeat ts, scan roots
-machines/<hostname>/repos/<repo-id>.json   # one state doc per repo
+machines/<hostname>/repos/<path-id>.json   # one state doc per working tree
 ```
 
-`repo-id` = short hash of the canonicalized first remote URL (so the same
-project is correlated across machines regardless of local path), or of the
-absolute path for remoteless repos.
+Two distinct identities, because one key cannot do both jobs:
+
+- **`repoId`** — hash of the canonicalized remote URL. Correlates the same
+  project across machines regardless of local path. `git@github.com:mads/poppy.git`,
+  `https://github.com/mads/poppy`, and `ssh://git@github.com/mads/poppy.git`
+  all resolve to one id. Falls back to a path hash when there is no remote.
+- **`path-id`** (the file key) — hash of machine plus absolute path. Several
+  worktrees or clones of one project share a `repoId`, so keying documents by
+  `repoId` would have them overwrite each other.
+
+Paths are canonicalized through `filepath.EvalSymlinks` at scan time to match
+what git reports as a working tree root. Without this, a symlinked code
+directory yields a different key each scan and dirty ages reset continuously.
 
 Repo state doc:
 
@@ -222,7 +232,8 @@ poppy mcp                        # MCP server on stdio
 | Machine dies | hub retains last state + all snapshots; recovery = clone repo, fetch WIP ref, apply |
 | Closet server dies | GitHub mirror has everything; re-point agents |
 | Clock skew | per-machine `seq` counters order events; timestamps are display-only |
-| Repo deleted/moved | tombstone record in state doc, pruned after 30 days |
+| Repo deleted/moved | its document disappears on the next scan, which rewrites the machine's directory wholesale |
+| Working tree git cannot read | recorded as `broken` with a one-line cause rather than a wall of repeated git errors; an orphaned worktree (parent repo removed or pruned) is named as such, since its contents are invisible to every ordinary git command and count as stranded work |
 | Concurrent dirty edits on two machines | divergence detected on grab and in status; surfaced, never auto-merged |
 
 ## Implementation
@@ -234,7 +245,7 @@ rather than reimplementing via go-git; correctness over purity.
 
 **Milestones:**
 
-1. **Observe** — `poppyd` scan + state push; `poppy status/dirty/find`
+1. **Observe** *(implemented)* — `poppyd` scan + state push; `poppy status/dirty/find`
    reading the hub. Usable value immediately.
 2. **Live** — tsnet API, heartbeats, live-with-fallback status.
 3. **Time machine** — WIP snapshots, retention, `poppy restore`.
