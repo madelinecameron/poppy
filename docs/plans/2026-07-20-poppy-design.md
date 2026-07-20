@@ -150,21 +150,52 @@ tree itself. The snapshot commit uses the stash commit format:
 This keeps staged/unstaged/untracked distinction intact and stays
 interoperable with `git stash apply` tooling.
 
-Snapshots chain: each new snapshot's ref history is preserved by writing to
-`refs/poppy/wip/<machine>/<branch>` and keeping prior commits reachable via a
-per-branch reflog-style ref (`refs/poppy/wiplog/<machine>/<branch>`), giving
-`poppy restore --as-of "yesterday 4pm"`.
+**Ref layout.** Two namespaces, both under `refs/poppy` so poppy can never
+disturb a branch or tag:
 
-**Privacy:** gitignored files are never snapshotted (`.env` and friends stay
-put). A per-repo `.poppy.toml` can exclude additional patterns or opt the
-repo out entirely.
+```
+refs/poppy/wip/<machine>/<branch>            latest snapshot
+refs/poppy/snap/<machine>/<branch>/<millis>  every retained snapshot
+```
 
-**Retention:** hub-side prune job — keep every snapshot for 7 days, then last
-per day for 90 days, then drop; `git gc` after prune. Agents prune local refs
-to match.
+Explicit per-snapshot refs rather than a reflog: reflog entries for commits
+unreachable from any branch expire under `gc.reflogExpireUnreachable` (30 days
+by default), which would silently delete history the time machine promised to
+keep. Refs protect their objects from `git gc` unconditionally.
 
-**Push:** each machine force-pushes only its own namespace
-(`refs/poppy/*/<machine>/*`), enforced by a hub pre-receive hook.
+Two details the implementation forced:
+
+- **Branch names are escaped** (`/` → `%2F`) before use as a ref component.
+  Git cannot store a ref at a path that is also a directory, so a snapshot ref
+  for branch `feature` blocks one for `feature/auth`. Git prevents both
+  branches existing at once, but nothing stops the first being deleted and the
+  second created later, at which point the stale snapshot ref causes a hard
+  failure.
+- **Capture times are recorded in milliseconds.** Second precision makes two
+  captures within one second name the same ref, and the second silently
+  replaces the first. Refs are additionally probed for collision before use.
+
+**Privacy:** gitignored files are never captured, which makes `.gitignore` the
+secrets boundary — `.env` and friends stay put. Untracked files above
+`snapshot.maxFileBytes` (10 MB default) are skipped and reported, so stray
+build output cannot permanently bloat a repository's object store. Repositories
+can be excluded wholesale with `snapshot.excludeRepos` glob patterns.
+
+**Retention:** keep every snapshot for 7 days, then the newest per day for 90
+days, then drop. The newest snapshot of a branch is always retained however
+old it is: it is the only record of that work, and pruning it would delete the
+very thing poppy exists to protect. Agents prune each cycle.
+
+**Sync:** *not yet implemented — the remaining decision.* Snapshots currently
+live only in the repository that produced them, which already protects against
+a bad `checkout`, `reset`, or `clean`, but not against losing the machine, and
+`poppy grab` cannot work until snapshots are reachable from elsewhere. Options:
+
+| Destination | Cost | Concern |
+|---|---|---|
+| The repo's own `origin` | Cheap: only the delta ships, since history is already there | Writes custom refs to shared remotes, including clients' |
+| One shared hub repo | Every repo's full history lands in one bare repo | Enormous; the hub lacks the base objects, so first push transfers everything |
+| Per-repo bare mirrors on the closet server | Full history once per repo, deltas after | Needs server-side repo creation over SSH; doubles as a complete backup |
 
 ## `poppy grab`
 
@@ -248,8 +279,9 @@ rather than reimplementing via go-git; correctness over purity.
 1. **Observe** *(implemented)* — `poppyd` scan + state push; `poppy status/dirty/find`
    reading the hub. Usable value immediately.
 2. **Live** — tsnet API, heartbeats, live-with-fallback status.
-3. **Time machine** — WIP snapshots, retention, `poppy restore`.
-4. **Teleport** — `poppy grab`, claims, divergence guards.
+3. **Time machine** *(implemented, local only)* — WIP snapshots, retention,
+   `poppy snapshot/timeline/restore`. Snapshot sync is the open decision above.
+4. **Teleport** — `poppy grab`, claims, divergence guards. Blocked on sync.
 5. **MCP** — read-only server + Claude Code config.
 6. **Polish** — TUI, `where_was_i` digests, shell-prompt claim warnings.
 

@@ -8,9 +8,9 @@ cannot answer from the machine you happen to be sitting at:
 - Where is that branch I started on Tuesday?
 - Does any work exist in exactly one place right now?
 
-Milestone 1 (observability) is implemented. Snapshots, `poppy grab`, and the
-MCP server are designed in [docs/plans](docs/plans/2026-07-20-poppy-design.md)
-and land next.
+Observability and the local time machine are implemented. Snapshot sync,
+`poppy grab`, and the MCP server are designed in
+[docs/plans](docs/plans/2026-07-20-poppy-design.md) and land next.
 
 ## How it works
 
@@ -83,6 +83,39 @@ poppy scan                # scan once now
 poppy status --json       # for scripting
 ```
 
+## Time machine
+
+Every scan captures each dirty working tree as a git commit stored outside the
+branch graph, so uncommitted work survives a bad `checkout`, `reset`, `clean`,
+or rebase. Capture never touches HEAD, the index, or the working tree — it is
+invisible to whoever is working in the repository.
+
+```sh
+poppy snapshot                     # capture this repository now
+poppy timeline                     # what has been captured
+poppy restore                      # recover the newest snapshot
+poppy restore --as-of 2h           # ...or whatever existed two hours ago
+poppy restore --as-of "2026-07-19 16:00"
+```
+
+`--as-of` accepts relative durations (`30m`, `2h`, `3d`) and absolute times.
+Restore refuses to apply over a working tree that has its own uncommitted
+changes, since that would merge two sets of work with no way to separate them
+afterwards; pass `--force` to override.
+
+Snapshots use git's own stash commit shape, so the staged, unstaged, and
+untracked split is restored exactly as captured, and `git stash apply <sha>`
+works on one directly without poppy.
+
+**What is never captured:** anything a `.gitignore` excludes. That makes
+`.gitignore` the secrets boundary — `.env` files stay where they are. Untracked
+files larger than `snapshot.maxFileBytes` (10 MB by default) are skipped and
+reported rather than bloating the object store.
+
+Snapshots currently stay on the machine that took them. That protects against
+losing work to git, but not against losing the machine — see the sync decision
+in the design document.
+
 Sample:
 
 ```
@@ -121,6 +154,11 @@ Work that exists in exactly one place:
 | `maxDepth` | how deep beneath a root to look (default 8) |
 | `includeWorktrees` | report linked worktrees as their own entries |
 | `staleAfterSeconds` | when a machine's heartbeat is considered stale |
+| `snapshot.enabled` | capture uncommitted work each scan |
+| `snapshot.maxFileBytes` | largest untracked file to capture (default 10 MB) |
+| `snapshot.keepAllHours` | retain every snapshot this long (default 168) |
+| `snapshot.keepDailyHours` | then one per day this long (default 2160) |
+| `snapshot.excludeRepos` | glob patterns of repositories never to capture |
 
 `node_modules`, `vendor`, `.venv`, `target`, and similar directories are always
 skipped. Nested repositories below a repository root are treated as submodules
