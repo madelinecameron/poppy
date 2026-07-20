@@ -44,8 +44,15 @@ type Repo struct {
 	Worktrees  []string          `json:"worktrees,omitempty"`
 	LastCommit *Commit           `json:"lastCommit,omitempty"`
 	LastFetch  *time.Time        `json:"lastFetch,omitempty"`
-	UpdatedAt  time.Time         `json:"updatedAt"`
-	Seq        uint64            `json:"seq"`
+	// Snapshot is this working tree's most recent captured state, if any. It
+	// is what another machine fetches when it teleports the work with grab.
+	Snapshot *SnapshotRef `json:"snapshot,omitempty"`
+	// Claim records that another machine has teleported this work and is now
+	// its live copy, so edits made here after the claim are flagged as a
+	// divergence rather than silently competing.
+	Claim     *Claim    `json:"claim,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Seq       uint64    `json:"seq"`
 	// Broken marks a directory that looks like a working tree but cannot be
 	// read as one, most often an orphaned worktree whose administrative
 	// directory is gone. Its contents are invisible to git, so any work left
@@ -139,6 +146,25 @@ type Commit struct {
 	Subject string    `json:"subject"`
 	Author  string    `json:"author"`
 	When    time.Time `json:"when"`
+}
+
+// SnapshotRef points at a captured working tree.
+type SnapshotRef struct {
+	SHA    string    `json:"sha"`
+	Ref    string    `json:"ref"`
+	Branch string    `json:"branch"`
+	Taken  time.Time `json:"taken"`
+	// Synced reports whether the snapshot has reached the mirror and can
+	// therefore be teleported to another machine.
+	Synced bool `json:"synced"`
+}
+
+// Claim records a teleport of a working tree onto another machine.
+type Claim struct {
+	By       string    `json:"by"`
+	Branch   string    `json:"branch"`
+	Snapshot string    `json:"snapshot"`
+	At       time.Time `json:"at"`
 }
 
 // Fleet is the aggregate view assembled from every machine's documents.
