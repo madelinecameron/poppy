@@ -278,7 +278,10 @@ func (c *Collector) lastCommit(ctx context.Context, g *gitx.Runner) (*model.Comm
 	if err != nil || len(fields) < 4 {
 		return nil, err
 	}
-	when, _ := time.Parse(time.RFC3339, fields[3])
+	// git log appends a newline after the format, which lands on the final
+	// NUL-delimited field. Left in place it makes the timestamp fail to parse,
+	// silently zeroing every commit date.
+	when, _ := time.Parse(time.RFC3339, strings.TrimSpace(fields[3]))
 	return &model.Commit{
 		SHA:     fields[0],
 		Subject: fields[1],
