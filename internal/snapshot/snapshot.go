@@ -328,6 +328,25 @@ func List(ctx context.Context, repoPath, machine, branch string) ([]Snapshot, er
 	return out, nil
 }
 
+// Latest returns the most recent snapshot of a branch, read from the wip ref
+// that Create advances. It reports false when the branch has none.
+func Latest(ctx context.Context, repoPath, machine, branch string) (Snapshot, bool) {
+	g := gitx.New(repoPath)
+	ref := LatestRef(machine, branch)
+	sha, err := g.Run(ctx, "rev-parse", "--verify", "--quiet", ref)
+	if err != nil || sha == "" {
+		return Snapshot{}, false
+	}
+
+	taken := time.Time{}
+	if when, err := g.Run(ctx, "log", "-1", "--format=%cI", sha); err == nil {
+		if parsed, err := time.Parse(time.RFC3339, when); err == nil {
+			taken = parsed
+		}
+	}
+	return Snapshot{SHA: sha, Machine: machine, Branch: branch, Taken: taken, Ref: ref}, true
+}
+
 // Policy decides which snapshots survive a prune.
 type Policy struct {
 	// KeepAll retains every snapshot taken within this window.
