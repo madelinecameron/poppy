@@ -236,19 +236,25 @@ A claim record written on grab remains a possible refinement if an explicit
 
 ## MCP server
 
-`poppy mcp` (stdio transport), tools:
+`poppy mcp` (stdio transport). *Implemented.* Tools:
 
 | Tool | Purpose |
 |------|---------|
-| `fleet_status` | machines, heartbeats, per-machine dirty/unpushed counts |
+| `fleet_status` | machines, heartbeats, per-machine dirty/unpushed/backed-up counts |
 | `dirty_trees` | every dirty tree fleet-wide, sorted by age |
 | `find_work(query)` | locate branches/repos matching a name or keyword |
 | `repo_state(machine, repo)` | full state doc |
-| `snapshot_history(machine, repo, branch)` | time-machine listing |
+| `snapshot_history(machine, repo, branch?)` | time-machine listing |
 | `where_was_i(machine?)` | narrative digest of recent activity |
 
-Read-only in v1 (`grab` stays human-initiated). Ships with a Claude Code
-`.mcp.json` snippet.
+Read-only (`grab` stays human-initiated). The transport is newline-delimited
+JSON-RPC 2.0 over stdio, implemented without a dependency so the binary stays
+self-contained. Each call refreshes from the hub first, tolerating a failure so
+stale state still answers. A tool that fails reports it inside the result
+rather than as a protocol error, so the model sees the reason and can adjust.
+`snapshot_history` lists full history for a repository checked out on this
+machine and falls back to the latest snapshot recorded in fleet state for one
+on another. Ships with a Claude Code `.mcp.json` snippet.
 
 ## CLI surface
 
@@ -308,8 +314,9 @@ rather than reimplementing via go-git; correctness over purity.
    simpler and more robust than a stored claim record and needs no write
    coordination between machines. An explicit claim written on grab remains a
    possible refinement.
-5. **MCP** — read-only server + Claude Code config.
-6. **Polish** — TUI, `where_was_i` digests, shell-prompt claim warnings.
+5. **MCP** *(implemented)* — read-only server + Claude Code config.
+6. **Polish** — TUI, live tsnet queries (milestone 2), shell-prompt claim
+   warnings. Not yet started.
 
 **Testing:** fixture repos built in temp dirs for state-collection unit
 tests; an integration harness that spins up two "machines" (two checkouts +
