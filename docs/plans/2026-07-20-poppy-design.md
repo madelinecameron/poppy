@@ -186,35 +186,53 @@ days, then drop. The newest snapshot of a branch is always retained however
 old it is: it is the only record of that work, and pruning it would delete the
 very thing poppy exists to protect. Agents prune each cycle.
 
-**Sync:** *not yet implemented — the remaining decision.* Snapshots currently
-live only in the repository that produced them, which already protects against
-a bad `checkout`, `reset`, or `clean`, but not against losing the machine, and
-`poppy grab` cannot work until snapshots are reachable from elsewhere. Options:
+**Sync:** *implemented — per-repo bare mirrors.* Each project has a bare
+mirror on the closet server, one per project, keyed by `repoId` so every
+machine working on a project shares its mirror. The agent pushes only that
+machine's `refs/poppy/*` after each capture; because a snapshot commit's first
+parent is HEAD, the push carries the whole object closure, so a machine that
+has never seen a project can still fetch and apply another's uncommitted work.
 
-| Destination | Cost | Concern |
-|---|---|---|
-| The repo's own `origin` | Cheap: only the delta ships, since history is already there | Writes custom refs to shared remotes, including clients' |
-| One shared hub repo | Every repo's full history lands in one bare repo | Enormous; the hub lacks the base objects, so first push transfers everything |
-| Per-repo bare mirrors on the closet server | Full history once per repo, deltas after | Needs server-side repo creation over SSH; doubles as a complete backup |
+Why per-repo mirrors over the alternatives considered: a single shared hub
+would hold none of a project's base objects, so the first push of every project
+would transfer its entire history into one enormous repo. Pushing snapshots to
+each project's own `origin` would write poppy's refs onto shared remotes,
+including clients'. Per-repo mirrors keep client code on the owner's hardware
+and double as a complete off-site backup.
+
+Refs are pushed with two refspecs, one per namespace
+(`refs/poppy/wip/<machine>/*` and `refs/poppy/snap/<machine>/*`), because a git
+refspec permits only one wildcard. Mirrors are created on demand: locally with
+`git init --bare`, or over SSH with `mkdir -p && git init --bare`, which is
+idempotent so two machines racing to create one is safe. When no host is
+configured the mirror directory is treated as a local path, which suits a
+single-box setup and makes the push/fetch paths testable without SSH.
 
 ## `poppy grab`
 
 `poppy grab <machine>:<repo> [branch]` — teleport work from another machine.
+*Implemented.*
 
-1. Resolve repo/branch; query the source machine live via tsnet. If online
-   and dirty, ask it to take a final snapshot now; else use the hub's latest.
-2. Fetch `refs/poppy/wip/<machine>/<branch>` from the hub.
-3. Locally: check out the branch (creating it at the snapshot's parent if
-   absent). Refuse if the local tree is dirty or the local branch has
-   diverged from the snapshot's parent — print exactly why and what to do.
-4. Apply the snapshot as working state, restoring the staged/unstaged/
-   untracked split from the stash-format parents.
-5. Write a **claim** record to the hub (`machines/<src>/repos/<id>.json`
-   gains `claim: {by, at, snapshotSha}`) and notify the source agent over
-   tsnet. The source machine's `poppyd` marks the tree "claimed elsewhere";
-   any new edits there trigger loud warnings (agent status, shell-prompt
-   hook, `poppy status` banner). Claims are advisory, not locks — divergence
-   is detected and surfaced, never silently merged.
+1. Resolve `<machine>:<repo>` against fleet state: find the source machine's
+   snapshot (which must be synced to the mirror) and this machine's checkout
+   of the same project, matched by `repoId`. Grab applies into an existing
+   checkout rather than cloning, so the project must already be present.
+2. Fetch the source machine's `refs/poppy/*` from the project's mirror. Only
+   that machine's namespace is fetched, so this machine's own snapshots are
+   untouched.
+3. Place the target branch on the snapshot's base — the source's HEAD at
+   capture, which arrived with the fetch — creating the branch there if it is
+   absent. Refuse if the local tree is dirty or the local branch sits on a
+   different commit, printing both SHAs and what to do. `--force` overrides.
+4. Apply the snapshot with `git stash apply`, restoring the staged, unstaged,
+   and untracked split from the stash-format parents.
+
+**Divergence**, rather than a stored claim: the same branch dirty on more than
+one machine is detected directly from fleet state and surfaced in `status`.
+This needs no write coordination — a grabbing machine writes only its own hub
+directory — and catches divergence however it arises, not only after a grab.
+A claim record written on grab remains a possible refinement if an explicit
+"this was taken by laptop" marker proves useful.
 
 ## MCP server
 
@@ -279,9 +297,17 @@ rather than reimplementing via go-git; correctness over purity.
 1. **Observe** *(implemented)* — `poppyd` scan + state push; `poppy status/dirty/find`
    reading the hub. Usable value immediately.
 2. **Live** — tsnet API, heartbeats, live-with-fallback status.
-3. **Time machine** *(implemented, local only)* — WIP snapshots, retention,
-   `poppy snapshot/timeline/restore`. Snapshot sync is the open decision above.
-4. **Teleport** — `poppy grab`, claims, divergence guards. Blocked on sync.
+3. **Time machine** *(implemented)* — WIP snapshots, retention,
+   `poppy snapshot/timeline/restore`, and per-repo mirror sync.
+4. **Teleport** *(implemented)* — `poppy grab` fetches a source machine's
+   snapshot from the mirror and applies it, reproducing the exact staged,
+   unstaged, and untracked split. A destination that is dirty or whose branch
+   has diverged from the snapshot's base is refused with an explanation;
+   `--force` overrides. Divergence — the same branch dirty on more than one
+   machine — is detected from fleet state and surfaced in `status`, which is
+   simpler and more robust than a stored claim record and needs no write
+   coordination between machines. An explicit claim written on grab remains a
+   possible refinement.
 5. **MCP** — read-only server + Claude Code config.
 6. **Polish** — TUI, `where_was_i` digests, shell-prompt claim warnings.
 

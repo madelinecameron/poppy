@@ -8,9 +8,9 @@ cannot answer from the machine you happen to be sitting at:
 - Where is that branch I started on Tuesday?
 - Does any work exist in exactly one place right now?
 
-Observability and the local time machine are implemented. Snapshot sync,
-`poppy grab`, and the MCP server are designed in
-[docs/plans](docs/plans/2026-07-20-poppy-design.md) and land next.
+Observability, the time machine, off-machine snapshot sync, and `poppy grab`
+are implemented. The MCP server is designed in
+[docs/plans](docs/plans/2026-07-20-poppy-design.md) and lands next.
 
 ## How it works
 
@@ -112,9 +112,38 @@ works on one directly without poppy.
 files larger than `snapshot.maxFileBytes` (10 MB by default) are skipped and
 reported rather than bloating the object store.
 
-Snapshots currently stay on the machine that took them. That protects against
-losing work to git, but not against losing the machine — see the sync decision
-in the design document.
+## Off-machine sync and teleport
+
+With a mirror configured, each scan pushes new snapshots to a bare repository
+on the closet server — one per project, which doubles as an off-site backup.
+Because a snapshot carries its base history, a machine that has never seen a
+project can still recover another machine's uncommitted work from it.
+
+```json
+"snapshot": {
+  "enabled": true,
+  "mirror": { "enabled": true, "host": "devbox.tailnet.ts.net", "dir": "/home/mads/poppy-mirrors" }
+}
+```
+
+Leave `host` empty to mirror to a local path instead (a single-box setup).
+
+Then teleport work between machines:
+
+```sh
+poppy grab devbox:poppy            # bring devbox's WIP for `poppy` onto this machine
+poppy grab devbox:poppy feature-x  # ...a specific branch
+```
+
+Grab fetches the source machine's latest snapshot and applies it into your
+local checkout of the same project, reproducing its exact working state — the
+staged, unstaged, and untracked split intact. It refuses to apply over a
+working tree with its own changes, or onto a branch that has diverged from the
+snapshot's base, explaining what it found; `--force` overrides.
+
+Because the work then exists on two machines, `poppy status` flags any project
+left dirty on the same branch in more than one place, so you commit before the
+two copies drift apart.
 
 Sample:
 
@@ -159,6 +188,9 @@ Work that exists in exactly one place:
 | `snapshot.keepAllHours` | retain every snapshot this long (default 168) |
 | `snapshot.keepDailyHours` | then one per day this long (default 2160) |
 | `snapshot.excludeRepos` | glob patterns of repositories never to capture |
+| `snapshot.mirror.enabled` | push snapshots off the machine each scan |
+| `snapshot.mirror.host` | SSH target of the closet server (empty = local path) |
+| `snapshot.mirror.dir` | directory holding the bare per-repo mirrors |
 
 `node_modules`, `vendor`, `.venv`, `target`, and similar directories are always
 skipped. Nested repositories below a repository root are treated as submodules
