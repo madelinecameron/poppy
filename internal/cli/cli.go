@@ -22,6 +22,11 @@ commands:
   machines    agents, versions, and heartbeats
   scan        run one scan of this machine now
   daemon      run the agent continuously
+
+  snapshot    capture this repository's uncommitted work now
+  timeline    list snapshots recorded for a repository
+  restore     restore a snapshot into the working tree
+
   init        write a starter configuration file
   version     print the agent version
 
@@ -49,6 +54,12 @@ func Main(ctx context.Context, args []string) int {
 		err = runMachines(ctx, rest)
 	case "scan":
 		err = runScan(ctx, rest)
+	case "snapshot":
+		err = runSnapshot(ctx, rest)
+	case "timeline":
+		err = runTimeline(ctx, rest)
+	case "restore":
+		err = runRestore(ctx, rest)
 	case "daemon":
 		err = runDaemon(ctx, rest)
 	case "init":
