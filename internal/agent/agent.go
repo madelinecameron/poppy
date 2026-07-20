@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"runtime"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/mads/poppy/internal/hub"
 	"github.com/mads/poppy/internal/model"
 	"github.com/mads/poppy/internal/scan"
+	"github.com/mads/poppy/internal/snapshot"
 )
 
 // Version is the agent version reported in manifests.
@@ -32,12 +34,14 @@ type Agent struct {
 
 // Report summarizes one cycle.
 type Report struct {
-	Repos    int
-	Dirty    int
-	Unpushed int
-	Duration time.Duration
-	Pushed   bool
-	Err      error
+	Repos     int
+	Dirty     int
+	Unpushed  int
+	Snapshots int
+	Pruned    int
+	Duration  time.Duration
+	Pushed    bool
+	Err       error
 }
 
 // New returns an Agent using cfg and store.
@@ -69,6 +73,8 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	repos := a.collectAll(ctx, found, prev)
 	sort.Slice(repos, func(i, j int) bool { return repos[i].Path < repos[j].Path })
 
+	snapshots, pruned := a.capture(ctx, repos)
+
 	seq := a.Store.NextSeq(a.Config.Machine)
 	for i := range repos {
 		repos[i].Seq = seq
@@ -95,10 +101,12 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	pushed, pubErr := a.Store.Publish(ctx, manifest, repos)
 
 	report := Report{
-		Repos:    len(repos),
-		Duration: time.Since(start),
-		Pushed:   pushed,
-		Err:      pubErr,
+		Repos:     len(repos),
+		Snapshots: snapshots,
+		Pruned:    pruned,
+		Duration:  time.Since(start),
+		Pushed:    pushed,
+		Err:       pubErr,
 	}
 	for _, r := range repos {
 		if r.Dirty.Any() {
@@ -148,6 +156,66 @@ func (a *Agent) collectAll(ctx context.Context, found []scan.Found, prev map[str
 	return out
 }
 
+// capture snapshots every dirty working tree and prunes what retention no
+// longer keeps. Capture failures are logged rather than propagated: a single
+// unreadable repository must not stop the rest of the fleet being recorded.
+func (a *Agent) capture(ctx context.Context, repos []model.Repo) (taken, pruned int) {
+	if !a.Config.Snapshot.Enabled {
+		return 0, 0
+	}
+
+	s := snapshot.New(a.Config.Machine)
+	s.MaxFileBytes = a.Config.Snapshot.MaxFileBytes
+	policy := a.Config.Snapshot.Policy()
+	now := time.Now()
+
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+	sem := make(chan struct{}, collectWorkers)
+
+	for _, r := range repos {
+		if r.Broken || a.Config.Snapshot.ExcludesRepo(r.Path) {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if r.Dirty.Any() {
+				switch snap, err := s.Create(ctx, r.Path); {
+				case err == nil:
+					mu.Lock()
+					taken++
+					mu.Unlock()
+					if len(snap.Skipped) > 0 {
+						a.Log.Warn("snapshot omitted oversized files",
+							"repo", r.Name, "files", len(snap.Skipped))
+					}
+				case errors.Is(err, snapshot.ErrUnchanged), errors.Is(err, snapshot.ErrNothingToCapture):
+					// Nothing moved since the last capture.
+				default:
+					a.Log.Warn("snapshot failed", "repo", r.Name, "err", err)
+				}
+			}
+
+			n, err := snapshot.Prune(ctx, r.Path, a.Config.Machine, policy, now)
+			if err != nil {
+				a.Log.Warn("snapshot prune failed", "repo", r.Name, "err", err)
+				return
+			}
+			mu.Lock()
+			pruned += n
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return taken, pruned
+}
+
 // Run performs cycles until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	interval := time.Duration(a.Config.ScanIntervalSeconds) * time.Second
@@ -175,6 +243,8 @@ func (a *Agent) logCycle(r Report, err error) {
 		"repos", r.Repos,
 		"dirty", r.Dirty,
 		"unpushed", r.Unpushed,
+		"snapshots", r.Snapshots,
+		"pruned", r.Pruned,
 		"took", r.Duration.Round(time.Millisecond),
 		"pushed", r.Pushed,
 	}

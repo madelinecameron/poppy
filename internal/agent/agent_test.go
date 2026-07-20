@@ -12,6 +12,7 @@ import (
 	"github.com/mads/poppy/internal/gittest"
 	"github.com/mads/poppy/internal/hub"
 	"github.com/mads/poppy/internal/model"
+	"github.com/mads/poppy/internal/snapshot"
 )
 
 func quietLogger() *slog.Logger {
@@ -45,6 +46,7 @@ func agentFor(t *testing.T, machine, codeRoot, hubDir, remote string) *Agent {
 		ScanIntervalSeconds: 300,
 		MaxDepth:            8,
 		StaleAfterSeconds:   3600,
+		Snapshot:            config.Snapshot{Enabled: true, MaxFileBytes: 1 << 20},
 	}
 	return New(cfg, store, quietLogger())
 }
@@ -241,6 +243,94 @@ func TestPublishedStateExcludesFileContents(t *testing.T) {
 	}
 	if !listed {
 		t.Errorf("changed path not recorded: %v", r.Dirty.Files)
+	}
+}
+
+// A scan captures every dirty tree it finds, so simply running the daemon
+// protects uncommitted work without anyone remembering to ask.
+func TestCycleCapturesDirtyTrees(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+
+	dirty := newRepoAt(t, root, "dirty-project")
+	dirty.Commit("init", "a.txt", "one\n")
+	dirty.Write("wip.txt", "unfinished\n")
+
+	clean := newRepoAt(t, root, "clean-project")
+	clean.Commit("init", "a.txt", "one\n")
+
+	a := agentFor(t, "laptop", root, filepath.Join(t.TempDir(), "hub"), "")
+
+	report, err := a.Cycle(ctx)
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	if report.Snapshots != 1 {
+		t.Errorf("snapshots = %d, want 1 (only the dirty repo)", report.Snapshots)
+	}
+
+	snaps, err := snapshot.List(ctx, dirty.Path, "laptop", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snaps) != 1 {
+		t.Fatalf("dirty repo snapshots = %d, want 1", len(snaps))
+	}
+
+	if snaps, err := snapshot.List(ctx, clean.Path, "laptop", ""); err != nil || len(snaps) != 0 {
+		t.Errorf("clean repo snapshots = %v (err %v), want none", snaps, err)
+	}
+
+	// A second cycle over an unchanged tree must not pile up duplicates.
+	if _, err := a.Cycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := snapshot.List(ctx, dirty.Path, "laptop", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Errorf("snapshots after second cycle = %d, want 1", len(after))
+	}
+}
+
+func TestCycleSkipsCaptureWhenDisabled(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := newRepoAt(t, root, "project")
+	repo.Commit("init", "a.txt", "one\n")
+	repo.Write("wip.txt", "work\n")
+
+	a := agentFor(t, "laptop", root, filepath.Join(t.TempDir(), "hub"), "")
+	a.Config.Snapshot.Enabled = false
+
+	report, err := a.Cycle(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Snapshots != 0 {
+		t.Errorf("snapshots = %d, want 0 when disabled", report.Snapshots)
+	}
+	if snaps, _ := snapshot.List(ctx, repo.Path, "laptop", ""); len(snaps) != 0 {
+		t.Errorf("captured %d snapshots despite being disabled", len(snaps))
+	}
+}
+
+func TestCycleHonoursSnapshotExclusions(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	secret := newRepoAt(t, root, "client-secret")
+	secret.Commit("init", "a.txt", "one\n")
+	secret.Write("wip.txt", "sensitive work\n")
+
+	a := agentFor(t, "laptop", root, filepath.Join(t.TempDir(), "hub"), "")
+	a.Config.Snapshot.ExcludeRepos = []string{"client-*"}
+
+	if _, err := a.Cycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if snaps, _ := snapshot.List(ctx, secret.Path, "laptop", ""); len(snaps) != 0 {
+		t.Errorf("excluded repository was captured (%d snapshots)", len(snaps))
 	}
 }
 

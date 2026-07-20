@@ -8,6 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/mads/poppy/internal/snapshot"
 )
 
 // Config is the machine-local configuration.
@@ -30,6 +33,25 @@ type Config struct {
 	IncludeWorktrees bool `json:"includeWorktrees"`
 	// StaleAfterSeconds is when a machine's heartbeat is considered stale.
 	StaleAfterSeconds int `json:"staleAfterSeconds,omitempty"`
+	// Snapshot controls the local time machine.
+	Snapshot Snapshot `json:"snapshot"`
+}
+
+// Snapshot configures capture of uncommitted work.
+type Snapshot struct {
+	// Enabled turns capture on. Snapshots are written to refs/poppy/* inside
+	// each repository and never leave the machine on their own.
+	Enabled bool `json:"enabled"`
+	// MaxFileBytes bounds the size of an untracked file that will be captured,
+	// keeping stray build output out of the object store.
+	MaxFileBytes int64 `json:"maxFileBytes,omitempty"`
+	// KeepAllHours retains every snapshot taken within this window.
+	KeepAllHours int `json:"keepAllHours,omitempty"`
+	// KeepDailyHours retains one snapshot per day within this window.
+	KeepDailyHours int `json:"keepDailyHours,omitempty"`
+	// ExcludeRepos are glob patterns matched against a repository path;
+	// matching repositories are never captured.
+	ExcludeRepos []string `json:"excludeRepos,omitempty"`
 }
 
 // Defaults returns the configuration used when none has been written.
@@ -41,7 +63,38 @@ func Defaults() Config {
 		IncludeWorktrees:    true,
 		MaxDepth:            8,
 		StaleAfterSeconds:   3600,
+		Snapshot: Snapshot{
+			Enabled:        true,
+			MaxFileBytes:   10 << 20,
+			KeepAllHours:   7 * 24,
+			KeepDailyHours: 90 * 24,
+		},
 	}
+}
+
+// ExcludesRepo reports whether a repository path is excluded from capture.
+func (s Snapshot) ExcludesRepo(path string) bool {
+	for _, pattern := range s.ExcludeRepos {
+		if ok, err := filepath.Match(pattern, path); err == nil && ok {
+			return true
+		}
+		if ok, err := filepath.Match(pattern, filepath.Base(path)); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// Policy converts the configured windows into a retention policy.
+func (s Snapshot) Policy() snapshot.Policy {
+	p := snapshot.DefaultPolicy()
+	if s.KeepAllHours > 0 {
+		p.KeepAll = time.Duration(s.KeepAllHours) * time.Hour
+	}
+	if s.KeepDailyHours > 0 {
+		p.KeepDaily = time.Duration(s.KeepDailyHours) * time.Hour
+	}
+	return p
 }
 
 // Path returns the configuration file location.
@@ -110,6 +163,15 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StaleAfterSeconds <= 0 {
 		c.StaleAfterSeconds = d.StaleAfterSeconds
+	}
+	if c.Snapshot.MaxFileBytes <= 0 {
+		c.Snapshot.MaxFileBytes = d.Snapshot.MaxFileBytes
+	}
+	if c.Snapshot.KeepAllHours <= 0 {
+		c.Snapshot.KeepAllHours = d.Snapshot.KeepAllHours
+	}
+	if c.Snapshot.KeepDailyHours <= 0 {
+		c.Snapshot.KeepDailyHours = d.Snapshot.KeepDailyHours
 	}
 	return c
 }
