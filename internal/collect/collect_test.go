@@ -45,6 +45,14 @@ func TestRepoCollectsFullState(t *testing.T) {
 	if got.LastCommit == nil || got.LastCommit.Subject != "unpushed work" {
 		t.Errorf("lastCommit = %+v, want subject 'unpushed work'", got.LastCommit)
 	}
+	// The commit time must parse; a trailing newline on the format's last
+	// field silently zeroes it, which breaks every "last active" ordering.
+	if got.LastCommit != nil && got.LastCommit.When.IsZero() {
+		t.Error("lastCommit.When is zero; the timestamp failed to parse")
+	}
+	if got.LastCommit != nil && time.Since(got.LastCommit.When) > time.Hour {
+		t.Errorf("lastCommit.When = %v, want a moment ago", got.LastCommit.When)
+	}
 	if got.RepoID == "" || got.PathID == "" {
 		t.Errorf("ids not set: repoID=%q pathID=%q", got.RepoID, got.PathID)
 	}
