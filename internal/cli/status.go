@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mads/poppy/internal/grab"
 	"github.com/mads/poppy/internal/model"
 )
 
@@ -44,6 +45,18 @@ func runStatus(ctx context.Context, args []string) error {
 
 	now := time.Now()
 	printFleet(fleet, cfg.Machine, time.Duration(cfg.StaleAfterSeconds)*time.Second, now, *all)
+
+	if diverged := grab.Divergences(fleet); len(diverged) > 0 {
+		fmt.Println()
+		fmt.Println(paint(bold+yellow, "DIVERGING") + "  same branch dirty on multiple machines:")
+		for _, d := range diverged {
+			fmt.Printf("  %s on %s — %s\n",
+				paint(bold, d.Name),
+				paint(cyan, d.Branch),
+				strings.Join(d.Machines, ", "))
+		}
+		fmt.Println(paint(dim, "  commit or grab before these drift further apart"))
+	}
 
 	if len(fleet.Machines) == 0 {
 		fmt.Println()
@@ -178,6 +191,9 @@ func repoRow(r model.Repo, now time.Time) []string {
 	}
 	if r.LocalOnly() {
 		marks = append(marks, paint(yellow, "no remote"))
+	}
+	if r.Snapshot != nil && r.Snapshot.Synced {
+		marks = append(marks, paint(green, "synced"))
 	}
 
 	dirtyCell := paint(dim, "clean")

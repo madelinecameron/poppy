@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mads/poppy/internal/mirror"
 	"github.com/mads/poppy/internal/snapshot"
 )
 
@@ -52,6 +53,20 @@ type Snapshot struct {
 	// ExcludeRepos are glob patterns matched against a repository path;
 	// matching repositories are never captured.
 	ExcludeRepos []string `json:"excludeRepos,omitempty"`
+	// Mirror sends snapshots off the machine, which backs them up and lets
+	// another machine teleport the work with grab.
+	Mirror Mirror `json:"mirror"`
+}
+
+// Mirror configures where snapshots are backed up.
+type Mirror struct {
+	// Enabled turns off-machine sync on.
+	Enabled bool `json:"enabled"`
+	// Host is the SSH target of the closet server. Empty means Dir is a path
+	// on the local machine, for a single-box setup.
+	Host string `json:"host,omitempty"`
+	// Dir holds the bare per-repository mirrors, on Host when set.
+	Dir string `json:"dir,omitempty"`
 }
 
 // Defaults returns the configuration used when none has been written.
@@ -83,6 +98,14 @@ func (s Snapshot) ExcludesRepo(path string) bool {
 		}
 	}
 	return false
+}
+
+// MirrorConfig converts the stored settings into a mirror destination.
+func (m Mirror) MirrorConfig() mirror.Config {
+	if !m.Enabled {
+		return mirror.Config{}
+	}
+	return mirror.Config{Host: m.Host, Dir: m.Dir}
 }
 
 // Policy converts the configured windows into a retention policy.
