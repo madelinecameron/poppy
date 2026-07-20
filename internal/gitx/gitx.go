@@ -20,6 +20,28 @@ const DefaultTimeout = 30 * time.Second
 type Runner struct {
 	Dir     string
 	Timeout time.Duration
+	// Extra is appended to the environment, for variables such as
+	// GIT_INDEX_FILE that redirect git at a scratch index.
+	Extra []string
+	// Stdin is supplied to the next invocation, for commands that read paths
+	// from standard input rather than argv.
+	Stdin []byte
+}
+
+// With returns a copy of the runner carrying additional environment entries.
+func (r *Runner) With(env ...string) *Runner {
+	clone := *r
+	clone.Extra = append(append([]string{}, r.Extra...), env...)
+	return &clone
+}
+
+// WithStdin returns a copy of the runner that feeds data to the next command.
+// Paths are passed this way so a repository with very many untracked files
+// cannot exceed the argument length limit.
+func (r *Runner) WithStdin(data []byte) *Runner {
+	clone := *r
+	clone.Stdin = data
+	return &clone
 }
 
 // New returns a Runner rooted at dir.
@@ -96,7 +118,10 @@ func (r *Runner) raw(ctx context.Context, args ...string) ([]byte, error) {
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
-	cmd.Env = env()
+	cmd.Env = append(env(), r.Extra...)
+	if r.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(r.Stdin)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
