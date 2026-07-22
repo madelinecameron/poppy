@@ -21,7 +21,7 @@ commands:
   find        locate a repository or branch across machines
   machines    agents, versions, and heartbeats
   scan        run one scan of this machine now
-  daemon      run the agent continuously
+  daemon      start the background agent (--stop, --status)
 
   snapshot    capture this repository's uncommitted work now
   timeline    list snapshots recorded for a repository

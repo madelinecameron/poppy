@@ -2,11 +2,16 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -59,15 +64,78 @@ func runScan(ctx context.Context, args []string) error {
 func runDaemon(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	interval := fs.Duration("interval", 0, "override the configured scan interval")
+	foreground := fs.Bool("foreground", false, "run the loop in this process instead of detaching")
+	stop := fs.Bool("stop", false, "stop the running daemon")
+	status := fs.Bool("status", false, "report whether the daemon is running")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
+	switch {
+	case *stop:
+		return stopDaemon()
+	case *status:
+		return daemonStatus()
+	case *foreground:
+		return runAgentLoop(ctx, *interval)
+	default:
+		return startDaemon(*interval)
+	}
+}
+
+// startDaemon launches a detached background copy of poppy running the agent
+// loop, then returns so the invoking shell is free. The child re-executes with
+// --foreground and inherits a log file in place of the terminal.
+func startDaemon(interval time.Duration) error {
+	if pid, ok := runningDaemon(); ok {
+		return fmt.Errorf("daemon already running (pid %d)", pid)
+	}
+	if err := os.MkdirAll(config.DataDir(), 0o755); err != nil {
+		return err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(daemonLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		return err
+	}
+	defer devnull.Close()
+
+	childArgs := []string{"daemon", "--foreground"}
+	if interval > 0 {
+		childArgs = append(childArgs, "--interval", interval.String())
+	}
+	cmd := exec.Command(exe, childArgs...)
+	cmd.Stdin = devnull
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if err := os.WriteFile(daemonPidPath(), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("%s poppy daemon started (pid %d)\n", paint(green, "ok"), cmd.Process.Pid)
+	fmt.Printf("  logs: %s\n", daemonLogPath())
+	fmt.Println(paint(dim, "stop with: poppy daemon --stop"))
+	return cmd.Process.Release()
+}
+
+// runAgentLoop runs the scan loop in the current process until interrupted.
+func runAgentLoop(ctx context.Context, interval time.Duration) error {
 	cfg, store, err := setup(ctx)
 	if err != nil {
 		return err
 	}
-	if *interval > 0 {
+	if interval > 0 {
 		cfg.ScanIntervalSeconds = int(interval.Seconds())
 	}
 
@@ -88,6 +156,49 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 	return err
 }
+
+func stopDaemon() error {
+	pid, ok := runningDaemon()
+	if !ok {
+		os.Remove(daemonPidPath())
+		return errors.New("no daemon running")
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		return err
+	}
+	os.Remove(daemonPidPath())
+	fmt.Printf("%s stopped poppy daemon (pid %d)\n", paint(green, "ok"), pid)
+	return nil
+}
+
+func daemonStatus() error {
+	if pid, ok := runningDaemon(); ok {
+		fmt.Printf("%s running (pid %d)\n", paint(green, "poppy daemon"), pid)
+		return nil
+	}
+	fmt.Printf("%s not running\n", paint(yellow, "poppy daemon"))
+	return nil
+}
+
+// runningDaemon reports the pid recorded in the pidfile when that process is
+// still alive, so a stale pidfile left by a crashed daemon reads as stopped.
+func runningDaemon() (int, bool) {
+	data, err := os.ReadFile(daemonPidPath())
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	if syscall.Kill(pid, 0) != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
+func daemonPidPath() string { return filepath.Join(config.DataDir(), "daemon.pid") }
+func daemonLogPath() string { return filepath.Join(config.DataDir(), "daemon.log") }
 
 func hubLabel(cfg config.Config) string {
 	if cfg.HubRemote == "" {
