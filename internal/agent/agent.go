@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -19,8 +20,17 @@ import (
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
-// Version is the agent version reported in manifests.
-const Version = "0.1.0"
+// Version reports the agent version shown in manifests and by "poppy version".
+// When poppy is built with "go install module@vX" the module version is
+// embedded in the build info; a plain local build reports "dev".
+func Version() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return "dev"
+}
 
 // collectWorkers bounds concurrent git invocations during a scan so a large
 // fleet of repositories does not saturate the machine.
@@ -93,7 +103,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		Machine:    a.Config.Machine,
 		OS:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
-		Version:    Version,
+		Version:    Version(),
 		ScanRoots:  roots,
 		RepoCount:  len(repos),
 		Seq:        seq,
