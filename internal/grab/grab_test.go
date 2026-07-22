@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/gittest"
-	"github.com/mads/poppy/internal/mirror"
-	"github.com/mads/poppy/internal/model"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/mirror"
+	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 func runGit(dir string, args ...string) (string, error) {

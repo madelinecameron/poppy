@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 func runFind(ctx context.Context, args []string) error {

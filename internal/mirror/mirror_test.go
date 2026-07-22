@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mads/poppy/internal/gittest"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 func dirtyRepoWithSnapshot(t *testing.T, machine string) (*gittest.Repo, snapshot.Snapshot) {

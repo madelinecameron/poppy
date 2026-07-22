@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mads/poppy/internal/gittest"
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 func TestRepoCollectsFullState(t *testing.T) {

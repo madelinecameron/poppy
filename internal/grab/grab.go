@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/gitx"
-	"github.com/mads/poppy/internal/mirror"
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/mirror"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 // Target describes a resolved teleport: which snapshot to fetch, from where,

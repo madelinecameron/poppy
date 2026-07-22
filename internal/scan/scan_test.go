@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mads/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/gittest"
 )
 
 // repoAt creates a repository and returns its physical path, which is what a

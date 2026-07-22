@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mads/poppy/internal/agent"
-	"github.com/mads/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/agent"
+	"github.com/madelinecameron/poppy/internal/config"
 )
 
 func runScan(ctx context.Context, args []string) error {

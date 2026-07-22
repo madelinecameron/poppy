@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/gitx"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // Config locates the mirrors.

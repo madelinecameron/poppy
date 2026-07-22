@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 func runDirty(ctx context.Context, args []string) error {

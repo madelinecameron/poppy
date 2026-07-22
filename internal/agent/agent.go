@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mads/poppy/internal/collect"
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/hub"
-	"github.com/mads/poppy/internal/mirror"
-	"github.com/mads/poppy/internal/model"
-	"github.com/mads/poppy/internal/scan"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/collect"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/hub"
+	"github.com/madelinecameron/poppy/internal/mirror"
+	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/scan"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // Version is the agent version reported in manifests.

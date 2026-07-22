@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/model"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // registry lists the read-only tools the server exposes.

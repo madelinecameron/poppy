@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mads/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/gittest"
 )
 
 func at(base time.Time, d time.Duration) time.Time { return base.Add(-d) }

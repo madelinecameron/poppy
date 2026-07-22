@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/mads/poppy/internal/mcp"
+	"github.com/madelinecameron/poppy/internal/mcp"
 )
 
 func runMCP(ctx context.Context, args []string) error {
