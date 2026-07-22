@@ -67,11 +67,17 @@ func runDaemon(ctx context.Context, args []string) error {
 	foreground := fs.Bool("foreground", false, "run the loop in this process instead of detaching")
 	stop := fs.Bool("stop", false, "stop the running daemon")
 	status := fs.Bool("status", false, "report whether the daemon is running")
+	install := fs.Bool("install", false, "install a service that starts poppy at login/boot")
+	uninstall := fs.Bool("uninstall", false, "remove the login/boot service")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	switch {
+	case *install:
+		return installService()
+	case *uninstall:
+		return uninstallService()
 	case *stop:
 		return stopDaemon()
 	case *status:
