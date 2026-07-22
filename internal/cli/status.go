@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/grab"
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/grab"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 func runStatus(ctx context.Context, args []string) error {

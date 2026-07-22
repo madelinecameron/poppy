@@ -5,7 +5,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/mads/poppy/internal/cli"
+	"github.com/madelinecameron/poppy/internal/cli"
 )
 
 func main() {

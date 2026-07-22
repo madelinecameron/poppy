@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 // MaxDirtyFiles bounds how many paths a state document lists.

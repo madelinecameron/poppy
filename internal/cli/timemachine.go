@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // repoArg resolves a command's repository argument, defaulting to the

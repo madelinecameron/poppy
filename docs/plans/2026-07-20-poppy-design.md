@@ -91,7 +91,7 @@ Two distinct identities, because one key cannot do both jobs:
 
 - **`repoId`** — hash of the canonicalized remote URL. Correlates the same
   project across machines regardless of local path. `git@github.com:mads/poppy.git`,
-  `https://github.com/mads/poppy`, and `ssh://git@github.com/mads/poppy.git`
+  `https://github.com/madelinecameron/poppy`, and `ssh://git@github.com/madelinecameron/poppy.git`
   all resolve to one id. Falls back to a path hash when there is no remote.
 - **`path-id`** (the file key) — hash of machine plus absolute path. Several
   worktrees or clones of one project share a `repoId`, so keying documents by

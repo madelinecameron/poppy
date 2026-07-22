@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 // fakeSource serves a fixed fleet, standing in for the hub store.

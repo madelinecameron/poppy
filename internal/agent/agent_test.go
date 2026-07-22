@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/gittest"
-	"github.com/mads/poppy/internal/hub"
-	"github.com/mads/poppy/internal/model"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/hub"
+	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 func quietLogger() *slog.Logger {

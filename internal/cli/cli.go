@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/hub"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/hub"
 )
 
 const usage = `poppy — fleet-wide git awareness

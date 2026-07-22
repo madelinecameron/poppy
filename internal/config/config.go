@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mads/poppy/internal/mirror"
-	"github.com/mads/poppy/internal/snapshot"
+	"github.com/madelinecameron/poppy/internal/mirror"
+	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // Config is the machine-local configuration.

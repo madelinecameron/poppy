@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mads/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/gittest"
 )
 
 func TestParseStatusCountsEachKindOfChange(t *testing.T) {

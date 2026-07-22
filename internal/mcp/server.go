@@ -8,8 +8,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/mads/poppy/internal/config"
-	"github.com/mads/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 // Source supplies fleet state to the server. hub.Store satisfies it; tests

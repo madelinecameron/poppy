@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mads/poppy/internal/grab"
+	"github.com/madelinecameron/poppy/internal/grab"
 )
 
 func runGrab(ctx context.Context, args []string) error {

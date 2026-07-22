@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mads/poppy/internal/gittest"
-	"github.com/mads/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/gittest"
+	"github.com/madelinecameron/poppy/internal/gitx"
 )
 
 func dirtyRepo(t *testing.T) *gittest.Repo {
