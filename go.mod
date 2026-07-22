@@ -1,3 +1,3 @@
-module github.com/mads/poppy
+module github.com/madelinecameron/poppy
 
 go 1.26
