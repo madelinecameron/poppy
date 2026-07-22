@@ -243,6 +243,6 @@ func runInit(ctx context.Context, args []string) error {
 }
 
 func runVersion(ctx context.Context, args []string) error {
-	fmt.Printf("poppy %s\n", agent.Version)
+	fmt.Printf("poppy %s\n", agent.Version())
 	return nil
 }
