@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madelinecameron/fabric/repoid"
 	"github.com/madelinecameron/poppy/internal/gitx"
-	"github.com/madelinecameron/poppy/internal/identity"
 	"github.com/madelinecameron/poppy/internal/model"
 )
 
@@ -54,7 +54,7 @@ func (c *Collector) Repo(ctx context.Context, path string, isWorktree bool, prev
 		Machine:    c.Machine,
 		Name:       filepath.Base(path),
 		Path:       path,
-		PathID:     identity.PathID(c.Machine, path),
+		PathID:     repoid.PathID(c.Machine, path),
 		IsWorktree: isWorktree,
 		UpdatedAt:  now,
 	}
@@ -63,7 +63,7 @@ func (c *Collector) Repo(ctx context.Context, path string, isWorktree bool, prev
 	// the same error, so report the cause once rather than running them.
 	if topErr != nil {
 		r.Broken = true
-		r.RepoID = identity.RepoID("", path)
+		r.RepoID = repoid.RepoID("", path)
 		r.Error = brokenReason(path, topErr)
 		return r
 	}
@@ -78,7 +78,7 @@ func (c *Collector) Repo(ctx context.Context, path string, isWorktree bool, prev
 	remotes, err := c.remotes(ctx, g)
 	fail("remotes", err)
 	r.Remotes = remotes
-	r.RepoID = identity.RepoID(primaryRemote(remotes), path)
+	r.RepoID = repoid.RepoID(primaryRemote(remotes), path)
 
 	st, err := g.Status(ctx)
 	fail("status", err)
