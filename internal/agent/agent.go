@@ -99,16 +99,18 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	}
 
 	manifest := model.Manifest{
-		Schema:     model.SchemaVersion,
-		Machine:    a.Config.Machine,
-		OS:         runtime.GOOS,
-		Arch:       runtime.GOARCH,
-		Version:    Version(),
-		ScanRoots:  roots,
-		RepoCount:  len(repos),
-		Seq:        seq,
-		Heartbeat:  time.Now().UTC(),
-		ScanMillis: time.Since(start).Milliseconds(),
+		Schema:      model.SchemaVersion,
+		Machine:     a.Config.Machine,
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
+		Version:     Version(),
+		ScanRoots:   roots,
+		RepoCount:   len(repos),
+		Seq:         seq,
+		Heartbeat:   time.Now().UTC(),
+		ScanMillis:  time.Since(start).Milliseconds(),
+		Daemons:     []model.Daemon{{Name: "poppy", Version: Version(), Role: "agent"}},
+		FabricRoles: a.Config.FabricRoles,
 	}
 
 	pushed, pubErr := a.Store.Publish(ctx, manifest, repos)

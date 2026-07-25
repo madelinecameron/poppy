@@ -46,6 +46,15 @@ poppy init --hub ssh://devbox.tailnet.ts.net/~/poppy-hub.git
 poppy scan
 ```
 
+Or self-configure the hub and mirror from a shared fabric manifest instead of
+passing flags — `--from-fabric` discovers it over the tailnet (find the closet
+box by tag, read `fabric.yaml` from it), `--fabric-file` reads a local copy:
+
+```sh
+poppy init --from-fabric          # discover over the tailnet
+poppy init --fabric-file ./fabric.yaml
+```
+
 `poppy init` writes `~/.config/poppy/config.json`:
 
 ```json
