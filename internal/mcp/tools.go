@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/secrets"
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
@@ -82,6 +83,26 @@ func registry() []tool {
 		},
 		{
 			descriptor: toolDescriptor{
+				Name: "secret_findings",
+				Description: "Credentials detected across the fleet, as locations only — repository, path, rule, and line. " +
+					"Includes findings in stashes and in commits on branches no remote has, which exist on one machine and are invisible to a pre-commit hook. " +
+					"The matched value is never recorded and cannot be retrieved.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"machine": map[string]any{"type": "string", "description": "Optional machine to restrict to."},
+						"rule":    map[string]any{"type": "string", "description": "Optional rule id to restrict to, such as github-token."},
+						"origin": map[string]any{
+							"type":        "string",
+							"description": "Optional origin to restrict to: worktree, stash, or commit.",
+						},
+					},
+				},
+			},
+			handle: secretFindings,
+		},
+		{
+			descriptor: toolDescriptor{
 				Name:        "where_was_i",
 				Description: "A narrative digest of recent activity across the fleet: what was touched, what advanced, and what is still uncommitted. Answers 'what was I working on?'.",
 				InputSchema: map[string]any{
@@ -114,12 +135,14 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 		Dirty     int       `json:"dirty"`
 		Unpushed  int       `json:"unpushed"`
 		Snapshots int       `json:"snapshotsSynced"`
+		Secrets   int       `json:"secretFindings"`
 	}
 	type totals struct {
 		Machines int `json:"machines"`
 		Repos    int `json:"repos"`
 		Dirty    int `json:"dirty"`
 		Unpushed int `json:"unpushed"`
+		Secrets  int `json:"secretFindings"`
 	}
 	out := struct {
 		Machines []machineView `json:"machines"`
@@ -145,11 +168,13 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 			if r.Snapshot != nil && r.Snapshot.Synced {
 				mv.Snapshots++
 			}
+			mv.Secrets += r.SecretCount()
 		}
 		out.Machines = append(out.Machines, mv)
 		out.Totals.Repos += mv.Repos
 		out.Totals.Dirty += mv.Dirty
 		out.Totals.Unpushed += mv.Unpushed
+		out.Totals.Secrets += mv.Secrets
 	}
 	out.Totals.Machines = len(fleet.Machines)
 	return jsonText(out)
@@ -199,6 +224,91 @@ func dirtyTrees(ctx context.Context, s *Server, _ map[string]any) (string, error
 		Count int     `json:"count"`
 		Dirty []entry `json:"dirty"`
 	}{Count: len(entries), Dirty: entries})
+}
+
+// secretFindings reports where credentials are, and only where. There is no
+// tool that returns a matched value, because no such value is stored: the
+// answer to "what is the secret" is "look at the file yourself".
+func secretFindings(ctx context.Context, s *Server, args map[string]any) (string, error) {
+	machine := argString(args, "machine")
+	rule := argString(args, "rule")
+	origin := argString(args, "origin")
+
+	fleet, err := s.fleet(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	type entry struct {
+		Machine  string `json:"machine"`
+		Repo     string `json:"repo"`
+		RepoPath string `json:"repoPath"`
+		Origin   string `json:"origin"`
+		Ref      string `json:"ref,omitempty"`
+		Path     string `json:"path"`
+		Line     int    `json:"line"`
+		Rule     string `json:"rule"`
+		// Unreachable marks a finding in content no remote has: a stash, or a
+		// commit on a branch that was never pushed. It exists on one machine.
+		Unreachable bool `json:"unreachable"`
+	}
+	entries := []entry{}
+	skipped := []string{}
+
+	for _, m := range fleet.Machines {
+		if machine != "" && m.Manifest.Machine != machine {
+			continue
+		}
+		for _, r := range m.Repos {
+			for _, sk := range r.Secrets.Skips() {
+				skipped = append(skipped, m.Manifest.Machine+":"+r.Name+" — "+sk.Explain())
+			}
+			for _, f := range r.Secrets.All() {
+				if rule != "" && string(f.Rule()) != rule {
+					continue
+				}
+				if origin != "" && string(f.Origin()) != origin {
+					continue
+				}
+				entries = append(entries, entry{
+					Machine: m.Manifest.Machine, Repo: r.Name, RepoPath: r.Path,
+					Origin: string(f.Origin()), Ref: f.Ref(), Path: f.Path(),
+					Line: f.Line(), Rule: string(f.Rule()),
+					Unreachable: f.Origin() == secrets.OriginStash || f.Origin() == secrets.OriginCommit,
+				})
+			}
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Unreachable != entries[j].Unreachable {
+			return entries[i].Unreachable
+		}
+		if entries[i].Machine != entries[j].Machine {
+			return entries[i].Machine < entries[j].Machine
+		}
+		return entries[i].Repo < entries[j].Repo
+	})
+
+	unreachable := 0
+	for _, e := range entries {
+		if e.Unreachable {
+			unreachable++
+		}
+	}
+
+	return jsonText(struct {
+		Count int `json:"count"`
+		// Unreachable is the count that no remote has and no hook can reach.
+		Unreachable int      `json:"unreachable"`
+		Findings    []entry  `json:"findings"`
+		NotScanned  []string `json:"notScanned,omitempty"`
+		Note        string   `json:"note"`
+	}{
+		Count: len(entries), Unreachable: unreachable, Findings: entries,
+		NotScanned: skipped,
+		Note:       "locations only; poppy never records the matched value",
+	})
 }
 
 func findWork(ctx context.Context, s *Server, args map[string]any) (string, error) {
