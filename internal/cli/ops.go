@@ -38,12 +38,17 @@ func runScan(ctx context.Context, args []string) error {
 	}
 
 	if !*quiet {
-		fmt.Printf("%s  %s · %s · %d dirty · %d unpushed · %s\n",
+		secrets := ""
+		if report.Findings > 0 {
+			secrets = " · " + paint(bold+red, plural(report.Findings, "secret"))
+		}
+		fmt.Printf("%s  %s · %s · %d dirty · %d unpushed%s · %s\n",
 			paint(bold, "SCAN"),
 			paint(cyan, cfg.Machine),
 			plural(report.Repos, "repo"),
 			report.Dirty,
 			report.Unpushed,
+			secrets,
 			paint(dim, report.Duration.Round(time.Millisecond).String()),
 		)
 		switch {
