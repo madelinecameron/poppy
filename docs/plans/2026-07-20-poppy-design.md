@@ -234,6 +234,79 @@ directory — and catches divergence however it arises, not only after a grab.
 A claim record written on grab remains a possible refinement if an explicit
 "this was taken by laptop" marker proves useful.
 
+## Secret scanning
+
+*Implemented.* A pre-commit hook stops the next credential and does nothing
+about the ones already committed, and nothing at all about content that never
+reaches a commit anyone else can see. Poppy's angle is the second half: it is
+the only thing in the toolchain that enumerates every repository on every
+machine, so it can reach the content that exists in exactly one place.
+
+**Scope.** Three sources per repository:
+
+- the working tree (`ls-files --cached --others --exclude-standard`, read from
+  disk); ignored files are left alone, keeping `.gitignore` the same secrets
+  boundary the snapshotter uses,
+- **stashes** — for each stash commit, the blobs it changes against its first
+  parent, plus the whole tree of its third parent when it was taken with `-u`,
+  since none of that exists anywhere else,
+- **commits no remote has** — `rev-list --branches --not --remotes`, and the
+  blobs each introduces. A repository with no remote at all yields its entire
+  history here, which is correct: it exists on one disk.
+
+Objects are deduplicated by SHA before reading, which is where most of the
+saving comes from — a file edited across fifty unpushed commits contributes
+fifty entries and a handful of distinct blobs — and are read through
+`cat-file --batch` in chunks, sized so peak memory is bounded rather than
+proportional to repository size. `--batch-check` runs first so an oversized
+object is dropped before its contents are ever read.
+
+**The no-values rule is structural.** State documents go to a shared hub, so a
+finding records repository, path, rule, and line and never the matched value.
+Matching happens against a `[]byte` that does not leave the `secrets` package;
+a rule returns a `Hit{Rule, Line}`, and the only constructor for a `Finding`
+takes a location and hits. `Finding` has no exported field, marshals through an
+explicit shape, and drops unknown fields on unmarshal, so a document written by
+something that did not honour the rule is sanitized on the way in. Tests assert
+the field sets by reflection and that a serialized report never contains the
+credential the scan was provoked with.
+
+**Rules.** Ten, chosen for precision over recall on the grounds that a noisy
+scanner gets switched off: private key blocks, AWS access key ids and
+context-corroborated secret keys, GitHub tokens and fine-grained PATs,
+`sk-ant-` keys, other `sk-` provider keys, Slack tokens and webhooks, live
+Stripe keys, and named assignments in `.env`-shaped files. The assignment rule
+carries a Shannon-entropy floor and a placeholder list, and is switched off for
+template filenames — a checked-in `.env.example` holding a generated
+development value is indistinguishable from a leak by shape, and the filename
+is the author saying which it is. The self-identifying rules still apply there,
+so `.example` excuses a placeholder and never a real token.
+
+**Bounds.** Every limit is configurable and every limit that bites is recorded
+in the report as a `Skip` with its reason and count. A bound that truncates
+silently would make a quiet report meaningless.
+
+**Cost.** Measured over 126 repositories on one machine: a cold cycle takes
+20s against a 4-5s baseline with scanning off; a second cycle takes 4s, because
+a repository whose git fingerprint (HEAD, branch tips, dirty count, stash
+count) has not moved reuses its previous report until
+`secrets.intervalSeconds`. Worst single repository was 2.7s for 7651
+working-tree files.
+
+**gitleaks** is supported as an opt-in additional backend over the working
+tree. Off by default: a backend that enables itself wherever the binary happens
+to be installed makes two machines disagree about the same repository for
+reasons nobody can see. Poppy reads only rule, file, and line from its report
+and namespaces the rule id, so the `Secret` and `Match` fields gitleaks writes
+never become Go values poppy holds.
+
+**Hooks.** `poppy hooks install` / `verify` / `uninstall` across the same
+repository set the agent scans, so "which of my repositories are unprotected"
+is answerable. The script is marked and versioned; a hook without the marker
+belongs to a person and is never replaced without `--force`, which moves it
+aside rather than deleting it. The hook fails open when poppy is not on PATH,
+because uninstalling poppy must not brick committing everywhere.
+
 ## MCP server
 
 `poppy mcp` (stdio transport). *Implemented.* Tools:
@@ -245,6 +318,7 @@ A claim record written on grab remains a possible refinement if an explicit
 | `find_work(query)` | locate branches/repos matching a name or keyword |
 | `repo_state(machine, repo)` | full state doc |
 | `snapshot_history(machine, repo, branch?)` | time-machine listing |
+| `secret_findings(machine?, rule?, origin?)` | where credentials are, locations only |
 | `where_was_i(machine?)` | narrative digest of recent activity |
 
 Read-only (`grab` stays human-initiated). The transport is newline-delimited
@@ -266,6 +340,8 @@ poppy grab <machine>:<repo> [br] # teleport work here
 poppy snapshot [repo]            # force a WIP snapshot now
 poppy restore --as-of <time>     # time-machine restore into worktree
 poppy machines                   # agents, versions, heartbeats
+poppy secrets                    # credentials fleet-wide, locations only
+poppy hooks install|verify       # pre-commit coverage across repositories
 poppy log <repo>                 # state history from the hub
 poppy daemon                     # run the agent (poppyd)
 poppy mcp                        # MCP server on stdio
@@ -278,6 +354,9 @@ poppy mcp                        # MCP server on stdio
 - Hub access is plain SSH with existing keys; the GitHub mirror is private.
 - Hub pre-receive hook confines each machine to its own ref/state namespace.
 - Gitignore is the secrets boundary for snapshots; `.poppy.toml` tightens it.
+- Secret findings are locations only. Nothing poppy writes, publishes, or
+  serves over MCP can contain a matched credential, and the `Finding` type has
+  no field one could be assigned to.
 
 ## Failure modes
 
@@ -315,7 +394,10 @@ rather than reimplementing via go-git; correctness over purity.
    coordination between machines. An explicit claim written on grab remains a
    possible refinement.
 5. **MCP** *(implemented)* — read-only server + Claude Code config.
-6. **Polish** — TUI, live tsnet queries (milestone 2), shell-prompt claim
+6. **Secrets** *(implemented)* — fleet-wide credential scanning of the working
+   tree, stashes, and unpushed commits; `poppy secrets`, `poppy hooks`, and the
+   `secret_findings` MCP tool. Findings are locations, never values.
+7. **Polish** — TUI, live tsnet queries (milestone 2), shell-prompt claim
    warnings. Not yet started.
 
 **Testing:** fixture repos built in temp dirs for state-collection unit
