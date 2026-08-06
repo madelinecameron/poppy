@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,10 @@ commands:
   machines    agents, versions, and heartbeats
   scan        run one scan of this machine now
   daemon      start the background agent (--stop, --status, --install)
+
+  secrets     credentials found across the fleet, including in stashes and
+              unpushed commits — content no remote has ever seen
+  hooks       install / verify the pre-commit secret hook across repositories
 
   snapshot    capture this repository's uncommitted work now
   timeline    list snapshots recorded for a repository
@@ -56,6 +61,10 @@ func Main(ctx context.Context, args []string) int {
 		err = runMachines(ctx, rest)
 	case "scan":
 		err = runScan(ctx, rest)
+	case "secrets":
+		err = runSecrets(ctx, rest)
+	case "hooks":
+		err = runHooks(ctx, rest)
 	case "snapshot":
 		err = runSnapshot(ctx, rest)
 	case "timeline":
@@ -80,12 +89,29 @@ func Main(ctx context.Context, args []string) int {
 		return 2
 	}
 
-	if err != nil {
+	var code exitCode
+	switch {
+	case errors.As(err, &code):
+		return int(code)
+	case err != nil:
 		fmt.Fprintf(os.Stderr, "poppy: %v\n", err)
 		return 1
 	}
 	return 0
 }
+
+// exitCode ends a command with a non-zero status without a further message,
+// for one that has already said everything there is to say. The pre-commit
+// hook path uses it: git shows the command's own output and nothing else is
+// wanted above it.
+type exitCode int
+
+func (e exitCode) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// loadConfigOnly reads configuration without opening the hub, for commands
+// that act on the local machine alone. The pre-commit hook runs on every
+// commit and has no business touching the shared state repository.
+func loadConfigOnly() (config.Config, error) { return config.Load() }
 
 // setup loads configuration and opens the local hub store.
 func setup(ctx context.Context) (config.Config, *hub.Store, error) {
