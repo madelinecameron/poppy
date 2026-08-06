@@ -1,7 +1,11 @@
 // Package model defines the documents poppy stores in the hub repository.
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/madelinecameron/poppy/internal/secrets"
+)
 
 // SchemaVersion is bumped when a document shape changes incompatibly.
 const SchemaVersion = 1
@@ -50,9 +54,15 @@ type Repo struct {
 	// Claim records that another machine has teleported this work and is now
 	// its live copy, so edits made here after the claim are flagged as a
 	// divergence rather than silently competing.
-	Claim     *Claim    `json:"claim,omitempty"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Seq       uint64    `json:"seq"`
+	Claim *Claim `json:"claim,omitempty"`
+	// Secrets is the most recent credential scan of this working tree, its
+	// stashes, and its unpushed commits. Findings are locations only: a
+	// repository, a path, a rule, and a line. The matched value is never
+	// recorded, here or anywhere else, because this document is committed to a
+	// hub shared across the fleet.
+	Secrets   *secrets.Report `json:"secrets,omitempty"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	Seq       uint64          `json:"seq"`
 	// Broken marks a directory that looks like a working tree but cannot be
 	// read as one, most often an orphaned worktree whose administrative
 	// directory is gone. Its contents are invisible to git, so any work left
@@ -119,6 +129,9 @@ func (r Repo) AtRisk() bool {
 	}
 	return r.Dirty.Any() || r.Unpushed() || r.Stashes > 0 || r.LocalOnly()
 }
+
+// SecretCount reports how many credential findings the last scan recorded.
+func (r Repo) SecretCount() int { return r.Secrets.Count() }
 
 // Dirty counts working-tree deviations. Files lists paths only, never content.
 type Dirty struct {

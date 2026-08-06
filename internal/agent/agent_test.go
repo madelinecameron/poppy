@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/madelinecameron/poppy/internal/config"
@@ -346,4 +347,115 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+// leakedToken is assembled at run time so that this file does not itself
+// become a finding whenever poppy scans its own repository.
+func leakedToken() string { return "ghp_" + "Zq4mXt7vAb3dKp9wRn2sLc6yUe8hJi5oGf1x" }
+
+func TestCycleRecordsSecretFindingsWithoutTheValue(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	hubDir := filepath.Join(t.TempDir(), "hub")
+
+	repo := newRepoAt(t, root, "leaky-project")
+	repo.Commit("init", "README.md", "hello\n")
+	// The credential goes into a commit and is then taken back out of the
+	// working tree: nothing on disk holds it, and the branch was never pushed,
+	// so it exists on this machine and nowhere else.
+	repo.Commit("wire up client", "client.go", "const token = \""+leakedToken()+"\"\n")
+	repo.Commit("read from env", "client.go", "const token = os.Getenv(\"TOKEN\")\n")
+
+	a := agentFor(t, "laptop", root, hubDir, "")
+	a.Config.Secrets = config.Defaults().Secrets
+
+	report, err := a.Cycle(ctx)
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	if report.Findings != 1 || report.Secrets != 1 {
+		t.Fatalf("report = %d findings in %d repos, want 1 and 1", report.Findings, report.Secrets)
+	}
+
+	state := a.Store.ReadMachine("laptop")
+	found, ok := findRepo(mapValues(state), "leaky-project")
+	if !ok {
+		t.Fatal("leaky-project missing from state")
+	}
+	if found.SecretCount() != 1 {
+		t.Fatalf("state document records %d findings, want 1", found.SecretCount())
+	}
+	f := found.Secrets.All()[0]
+	if f.Path() != "client.go" || f.Ref() == "" {
+		t.Errorf("finding = %+v, want client.go in a named commit", f)
+	}
+
+	// The state document is committed to a shared hub. Whatever else is true,
+	// the credential must not be in it.
+	assertHubHasNoValue(t, hubDir, leakedToken())
+}
+
+func TestSecondCycleReusesAnUnchangedScan(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+
+	repo := newRepoAt(t, root, "steady-project")
+	repo.Commit("init", "README.md", "hello\n")
+
+	a := agentFor(t, "laptop", root, filepath.Join(t.TempDir(), "hub"), "")
+	a.Config.Secrets = config.Defaults().Secrets
+
+	if _, err := a.Cycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := findRepo(mapValues(a.Store.ReadMachine("laptop")), "steady-project")
+
+	if _, err := a.Cycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := findRepo(mapValues(a.Store.ReadMachine("laptop")), "steady-project")
+
+	if first.Secrets == nil || second.Secrets == nil {
+		t.Fatal("no scan was recorded")
+	}
+	if !second.Secrets.ScannedAt.Equal(first.Secrets.ScannedAt) {
+		t.Error("an unchanged repository was rescanned, so a short scan interval would re-read every file each cycle")
+	}
+
+	repo.Write("new.txt", "changed\n")
+	if _, err := a.Cycle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	third, _ := findRepo(mapValues(a.Store.ReadMachine("laptop")), "steady-project")
+	if third.Secrets.ScannedAt.Equal(first.Secrets.ScannedAt) {
+		t.Error("a changed repository was not rescanned")
+	}
+}
+
+func mapValues(m map[string]model.Repo) []model.Repo {
+	out := make([]model.Repo, 0, len(m))
+	for _, r := range m {
+		out = append(out, r)
+	}
+	return out
+}
+
+func assertHubHasNoValue(t *testing.T, hubDir, value string) {
+	t.Helper()
+	err := filepath.WalkDir(hubDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if strings.Contains(string(data), value) {
+			t.Errorf("%s contains the matched credential", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

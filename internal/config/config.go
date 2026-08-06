@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/mirror"
+	"github.com/madelinecameron/poppy/internal/secretscan"
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
@@ -36,6 +37,39 @@ type Config struct {
 	StaleAfterSeconds int `json:"staleAfterSeconds,omitempty"`
 	// Snapshot controls the local time machine.
 	Snapshot Snapshot `json:"snapshot"`
+	// Secrets controls credential scanning.
+	Secrets Secrets `json:"secrets"`
+}
+
+// Secrets configures the credential scanner. Every bound is explicit: a scan
+// that quietly stopped early would make a clean report meaningless.
+type Secrets struct {
+	// Enabled turns scanning on as part of each cycle.
+	Enabled bool `json:"enabled"`
+	// Gitleaks additionally runs gitleaks over each working tree when it is on
+	// PATH. Off by default so that two machines scanning the same repository
+	// cannot disagree because of what happens to be installed on each.
+	Gitleaks bool `json:"gitleaks,omitempty"`
+	// IntervalSeconds is the longest a scan result is reused. Within it, a
+	// repository whose git state has not changed is not re-read.
+	IntervalSeconds int `json:"intervalSeconds,omitempty"`
+	// MaxFileBytes bounds the size of a file or object that is examined.
+	MaxFileBytes int64 `json:"maxFileBytes,omitempty"`
+	// MaxWorktreeFiles bounds how many working-tree files are read.
+	MaxWorktreeFiles int `json:"maxWorktreeFiles,omitempty"`
+	// MaxUnpushedCommits bounds the walk over commits no remote has. A
+	// repository with no remote at all has no upper bound but this one.
+	MaxUnpushedCommits int `json:"maxUnpushedCommits,omitempty"`
+	// MaxBlobs bounds how many distinct objects from stashes and unpushed
+	// commits are read.
+	MaxBlobs int `json:"maxBlobs,omitempty"`
+	// MaxFindings bounds how many findings one repository records.
+	MaxFindings int `json:"maxFindings,omitempty"`
+	// TimeoutSeconds bounds one repository's scan.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+	// ExcludeRepos are glob patterns matched against a repository path;
+	// matching repositories are never scanned.
+	ExcludeRepos []string `json:"excludeRepos,omitempty"`
 }
 
 // Snapshot configures capture of uncommitted work.
@@ -84,12 +118,52 @@ func Defaults() Config {
 			KeepAllHours:   7 * 24,
 			KeepDailyHours: 90 * 24,
 		},
+		Secrets: Secrets{
+			Enabled:            true,
+			IntervalSeconds:    3600,
+			MaxFileBytes:       secretscan.DefaultMaxFileBytes,
+			MaxWorktreeFiles:   secretscan.DefaultMaxWorktreeFiles,
+			MaxUnpushedCommits: secretscan.DefaultMaxUnpushedCommits,
+			MaxBlobs:           secretscan.DefaultMaxBlobs,
+			MaxFindings:        secretscan.DefaultMaxFindings,
+			TimeoutSeconds:     int(secretscan.DefaultTimeout.Seconds()),
+		},
 	}
+}
+
+// ExcludesRepo reports whether a repository path is excluded from scanning.
+func (s Secrets) ExcludesRepo(path string) bool {
+	return matchesAny(s.ExcludeRepos, path)
+}
+
+// ScanOptions converts the stored settings into scanner bounds.
+func (s Secrets) ScanOptions() secretscan.Options {
+	return secretscan.Options{
+		MaxFileBytes:       s.MaxFileBytes,
+		MaxWorktreeFiles:   s.MaxWorktreeFiles,
+		MaxUnpushedCommits: s.MaxUnpushedCommits,
+		MaxBlobs:           s.MaxBlobs,
+		MaxFindings:        s.MaxFindings,
+		Timeout:            time.Duration(s.TimeoutSeconds) * time.Second,
+		Gitleaks:           s.Gitleaks,
+	}
+}
+
+// Interval is how long a scan result may be reused for an unchanged repository.
+func (s Secrets) Interval() time.Duration {
+	return time.Duration(s.IntervalSeconds) * time.Second
 }
 
 // ExcludesRepo reports whether a repository path is excluded from capture.
 func (s Snapshot) ExcludesRepo(path string) bool {
-	for _, pattern := range s.ExcludeRepos {
+	return matchesAny(s.ExcludeRepos, path)
+}
+
+// matchesAny reports whether a repository path matches a glob pattern either
+// whole or by its final component, so both "/home/mads/code/client-*" and
+// "client-*" exclude what a person means by them.
+func matchesAny(patterns []string, path string) bool {
+	for _, pattern := range patterns {
 		if ok, err := filepath.Match(pattern, path); err == nil && ok {
 			return true
 		}
@@ -195,6 +269,27 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Snapshot.KeepDailyHours <= 0 {
 		c.Snapshot.KeepDailyHours = d.Snapshot.KeepDailyHours
+	}
+	if c.Secrets.IntervalSeconds <= 0 {
+		c.Secrets.IntervalSeconds = d.Secrets.IntervalSeconds
+	}
+	if c.Secrets.MaxFileBytes <= 0 {
+		c.Secrets.MaxFileBytes = d.Secrets.MaxFileBytes
+	}
+	if c.Secrets.MaxWorktreeFiles <= 0 {
+		c.Secrets.MaxWorktreeFiles = d.Secrets.MaxWorktreeFiles
+	}
+	if c.Secrets.MaxUnpushedCommits <= 0 {
+		c.Secrets.MaxUnpushedCommits = d.Secrets.MaxUnpushedCommits
+	}
+	if c.Secrets.MaxBlobs <= 0 {
+		c.Secrets.MaxBlobs = d.Secrets.MaxBlobs
+	}
+	if c.Secrets.MaxFindings <= 0 {
+		c.Secrets.MaxFindings = d.Secrets.MaxFindings
+	}
+	if c.Secrets.TimeoutSeconds <= 0 {
+		c.Secrets.TimeoutSeconds = d.Secrets.TimeoutSeconds
 	}
 	return c
 }
