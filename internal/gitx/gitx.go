@@ -96,6 +96,13 @@ func (r *Runner) RunZ(ctx context.Context, args ...string) ([]string, error) {
 	return fields, nil
 }
 
+// Bytes executes git with args and returns stdout unmodified, for commands
+// whose output is object content rather than text and must not be trimmed or
+// split.
+func (r *Runner) Bytes(ctx context.Context, args ...string) ([]byte, error) {
+	return r.raw(ctx, args...)
+}
+
 // Lines executes git with args and returns non-empty stdout lines.
 func (r *Runner) Lines(ctx context.Context, args ...string) ([]string, error) {
 	out, err := r.Run(ctx, args...)

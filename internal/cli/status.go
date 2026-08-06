@@ -70,7 +70,7 @@ func runStatus(ctx context.Context, args []string) error {
 }
 
 func printFleet(fleet model.Fleet, thisMachine string, staleAfter time.Duration, now time.Time, all bool) {
-	var repos, dirty, unpushed, stashes, localOnly, broken int
+	var repos, dirty, unpushed, stashes, localOnly, broken, findings int
 	for _, m := range fleet.Machines {
 		repos += len(m.Repos)
 		for _, r := range m.Repos {
@@ -88,6 +88,7 @@ func printFleet(fleet model.Fleet, thisMachine string, staleAfter time.Duration,
 				localOnly++
 			}
 			stashes += r.Stashes
+			findings += r.SecretCount()
 		}
 	}
 
@@ -109,6 +110,9 @@ func printFleet(fleet model.Fleet, thisMachine string, staleAfter time.Duration,
 	}
 	if broken > 0 {
 		summary = append(summary, paint(red, fmt.Sprintf("%d unreadable", broken)))
+	}
+	if findings > 0 {
+		summary = append(summary, paint(bold+red, plural(findings, "secret")))
 	}
 	fmt.Printf("%s  %s\n", paint(bold, "FLEET"), strings.Join(summary, " · "))
 
@@ -137,7 +141,9 @@ func printMachine(m model.MachineState, thisMachine string, staleAfter time.Dura
 	var t table
 	shown := 0
 	for _, r := range m.Repos {
-		if !r.AtRisk() && !all {
+		// A fully pushed, clean repository holding a committed credential is
+		// not at risk of being lost, but it is exactly what needs looking at.
+		if !r.AtRisk() && r.SecretCount() == 0 && !all {
 			continue
 		}
 		shown++
@@ -194,6 +200,9 @@ func repoRow(r model.Repo, now time.Time) []string {
 	}
 	if r.Snapshot != nil && r.Snapshot.Synced {
 		marks = append(marks, paint(green, "synced"))
+	}
+	if n := r.SecretCount(); n > 0 {
+		marks = append(marks, paint(bold+red, plural(n, "secret")))
 	}
 
 	dirtyCell := paint(dim, "clean")

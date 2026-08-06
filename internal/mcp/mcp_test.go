@@ -10,6 +10,7 @@ import (
 
 	"github.com/madelinecameron/poppy/internal/config"
 	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/secrets"
 )
 
 // fakeSource serves a fixed fleet, standing in for the hub store.
@@ -37,6 +38,7 @@ func sampleFleet(now time.Time) model.Fleet {
 					Remotes:    map[string]string{"origin": "git@github.com:mads/poppy.git"},
 					LastCommit: &model.Commit{SHA: "aaa", Subject: "wip auth refactor", When: now.Add(-51 * time.Hour)},
 					Snapshot:   &model.SnapshotRef{SHA: "snap111", Branch: "feature/auth", Taken: now.Add(-30 * time.Minute), Synced: true},
+					Secrets:    sampleSecrets(now),
 				},
 				{
 					RepoID: "p2", Name: "api", Machine: "devbox", Path: "/home/mads/code/api",
@@ -57,6 +59,18 @@ func sampleFleet(now time.Time) model.Fleet {
 			},
 		},
 	}}
+}
+
+func sampleSecrets(now time.Time) *secrets.Report {
+	report := &secrets.Report{Backend: "builtin", ScannedAt: now.Add(-10 * time.Minute)}
+	report.Findings = append(report.Findings,
+		secrets.Findings(secrets.Location{Origin: secrets.OriginWorktree, Path: "cmd/main.go"},
+			[]secrets.Hit{{Rule: secrets.RuleAWSAccessKeyID, Line: 12}})...)
+	report.Findings = append(report.Findings,
+		secrets.Findings(secrets.Location{Origin: secrets.OriginStash, Ref: "stash@{0}", Path: "deploy/.env"},
+			[]secrets.Hit{{Rule: secrets.RuleEnvAssignment, Line: 4}})...)
+	report.Note(secrets.SkipUnpushedCommits, 40, 500)
+	return report
 }
 
 // exchange runs one request through the server and returns the decoded result.
@@ -149,7 +163,8 @@ func TestToolsListReturnsEverySchema(t *testing.T) {
 	}
 	want := map[string]bool{
 		"fleet_status": true, "dirty_trees": true, "find_work": true,
-		"repo_state": true, "snapshot_history": true, "where_was_i": true,
+		"repo_state": true, "snapshot_history": true, "secret_findings": true,
+		"where_was_i": true,
 	}
 	if len(res.Tools) != len(want) {
 		t.Errorf("listed %d tools, want %d", len(res.Tools), len(want))
@@ -388,6 +403,72 @@ func TestMultipleMessagesInSequence(t *testing.T) {
 		}
 		if resp.JSONRPC != "2.0" {
 			t.Errorf("line %d missing jsonrpc version", i)
+		}
+	}
+}
+
+func TestSecretFindingsRanksUnreachableContentFirst(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+	text := callTool(t, s, "secret_findings", nil)
+
+	var out struct {
+		Count       int `json:"count"`
+		Unreachable int `json:"unreachable"`
+		Findings    []struct {
+			Origin      string `json:"origin"`
+			Ref         string `json:"ref"`
+			Path        string `json:"path"`
+			Line        int    `json:"line"`
+			Rule        string `json:"rule"`
+			Unreachable bool   `json:"unreachable"`
+		} `json:"findings"`
+		NotScanned []string `json:"notScanned"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("decode %q: %v", text, err)
+	}
+
+	if out.Count != 2 || out.Unreachable != 1 {
+		t.Fatalf("count = %d, unreachable = %d; want 2 and 1", out.Count, out.Unreachable)
+	}
+	// A stash finding exists on one machine and no hook can reach it, so it
+	// leads regardless of alphabetical order.
+	if !out.Findings[0].Unreachable || out.Findings[0].Ref != "stash@{0}" {
+		t.Errorf("first finding = %+v, want the stash one", out.Findings[0])
+	}
+	if len(out.NotScanned) != 1 || !strings.Contains(out.NotScanned[0], "unpushed") {
+		t.Errorf("notScanned = %v, want the unpushed-commit bound reported", out.NotScanned)
+	}
+}
+
+func TestSecretFindingsFilters(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+
+	text := callTool(t, s, "secret_findings", map[string]any{"origin": "worktree"})
+	if strings.Contains(text, "stash@{0}") {
+		t.Errorf("origin filter did not apply: %s", text)
+	}
+	text = callTool(t, s, "secret_findings", map[string]any{"machine": "laptop"})
+	if !strings.Contains(text, `"count": 0`) {
+		t.Errorf("machine filter did not apply: %s", text)
+	}
+}
+
+// TestSecretFindingsNeverCarryValues is the assertion that matters most here:
+// the MCP server hands fleet state to an agent, and the state it hands over
+// must not be able to contain a credential.
+func TestSecretFindingsNeverCarryValues(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+	for _, tool := range []string{"secret_findings", "repo_state", "fleet_status"} {
+		args := map[string]any{}
+		if tool == "repo_state" {
+			args = map[string]any{"machine": "devbox", "repo": "poppy"}
+		}
+		text := callTool(t, s, tool, args)
+		for _, banned := range []string{"value", "secretValue", "match"} {
+			if strings.Contains(text, `"`+banned+`"`) {
+				t.Errorf("%s emitted a %q field: %s", tool, banned, text)
+			}
 		}
 	}
 }

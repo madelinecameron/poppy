@@ -17,6 +17,8 @@ import (
 	"github.com/madelinecameron/poppy/internal/mirror"
 	"github.com/madelinecameron/poppy/internal/model"
 	"github.com/madelinecameron/poppy/internal/scan"
+	"github.com/madelinecameron/poppy/internal/secrets"
+	"github.com/madelinecameron/poppy/internal/secretscan"
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
@@ -51,9 +53,13 @@ type Report struct {
 	Snapshots int
 	Pruned    int
 	Synced    int
-	Duration  time.Duration
-	Pushed    bool
-	Err       error
+	// Secrets counts repositories holding at least one credential finding, and
+	// Findings the findings themselves.
+	Secrets  int
+	Findings int
+	Duration time.Duration
+	Pushed   bool
+	Err      error
 }
 
 // New returns an Agent using cfg and store.
@@ -85,6 +91,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	repos := a.collectAll(ctx, found, prev)
 	sort.Slice(repos, func(i, j int) bool { return repos[i].Path < repos[j].Path })
 
+	a.scanSecrets(ctx, repos, prev)
 	snapshots, pruned := a.capture(ctx, repos)
 	synced := a.sync(ctx, repos)
 
@@ -129,6 +136,10 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		if r.Unpushed() {
 			report.Unpushed++
 		}
+		if n := r.SecretCount(); n > 0 {
+			report.Secrets++
+			report.Findings += n
+		}
 	}
 	return report, nil
 }
@@ -168,6 +179,67 @@ func (a *Agent) collectAll(ctx context.Context, found []scan.Found, prev map[str
 		}
 	}
 	return out
+}
+
+// scanSecrets records where credentials sit in each repository: in the working
+// tree, in stashes, and in commits on branches no remote has. The last two are
+// the reason this lives in poppy at all — they are the content that exists on
+// exactly one disk, that no pre-commit hook will ever see, and that only
+// something enumerating every repository on every machine can find.
+//
+// A previous result is carried forward when the repository's git state has not
+// moved and the result is younger than the configured interval. Without that,
+// a five-minute cycle would re-read every file of every repository all day.
+func (a *Agent) scanSecrets(ctx context.Context, repos []model.Repo, prev map[string]model.Repo) {
+	if !a.Config.Secrets.Enabled {
+		return
+	}
+
+	prevByPath := make(map[string]model.Repo, len(prev))
+	for _, r := range prev {
+		prevByPath[r.Path] = r
+	}
+
+	opts := a.Config.Secrets.ScanOptions()
+	interval := a.Config.Secrets.Interval()
+	now := time.Now()
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, collectWorkers)
+
+	for i := range repos {
+		r := &repos[i]
+		if r.Broken || a.Config.Secrets.ExcludesRepo(r.Path) {
+			continue
+		}
+		fingerprint := secretscan.Fingerprint(*r)
+		if old, ok := prevByPath[r.Path]; ok && reusable(old.Secrets, fingerprint, now, interval) {
+			r.Secrets = old.Secrets
+			continue
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			report := secretscan.Repo(ctx, r.Path, opts)
+			report.Fingerprint = fingerprint
+			if report.Error != "" {
+				a.Log.Warn("secret scan degraded", "repo", r.Name, "err", report.Error)
+			}
+			r.Secrets = &report
+		}()
+	}
+	wg.Wait()
+}
+
+// reusable reports whether a previous scan still describes the repository.
+func reusable(prev *secrets.Report, fingerprint string, now time.Time, interval time.Duration) bool {
+	return prev != nil &&
+		prev.Fingerprint == fingerprint &&
+		now.Sub(prev.ScannedAt) < interval
 }
 
 // capture snapshots every dirty working tree and prunes what retention no
@@ -317,6 +389,7 @@ func (a *Agent) logCycle(r Report, err error) {
 		"snapshots", r.Snapshots,
 		"pruned", r.Pruned,
 		"synced", r.Synced,
+		"secrets", r.Findings,
 		"took", r.Duration.Round(time.Millisecond),
 		"pushed", r.Pushed,
 	}
