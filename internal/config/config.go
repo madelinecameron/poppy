@@ -33,6 +33,10 @@ type Config struct {
 	MaxDepth int `json:"maxDepth,omitempty"`
 	// IncludeWorktrees reports linked worktrees as their own entries.
 	IncludeWorktrees bool `json:"includeWorktrees"`
+	// FabricRoles are the roles this machine plays in the fabric (e.g. "closet",
+	// "hub-host", "registry-host"), published in the machine's manifest so the
+	// fleet is discoverable without a coordinator.
+	FabricRoles []string `json:"fabricRoles,omitempty"`
 	// StaleAfterSeconds is when a machine's heartbeat is considered stale.
 	StaleAfterSeconds int `json:"staleAfterSeconds,omitempty"`
 	// Snapshot controls the local time machine.

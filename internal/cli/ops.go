@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/madelinecameron/fabric/discovery"
+	"github.com/madelinecameron/fabric/tailnet"
 	"github.com/madelinecameron/poppy/internal/agent"
 	"github.com/madelinecameron/poppy/internal/config"
 )
@@ -222,6 +224,8 @@ func runInit(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	force := fs.Bool("force", false, "overwrite an existing configuration")
 	remote := fs.String("hub", "", "git URL of the shared hub repository")
+	fromFabric := fs.Bool("from-fabric", false, "discover fabric.yaml over the tailnet to self-configure hub + mirror")
+	fabricFile := fs.String("fabric-file", "", "read a local fabric.yaml to self-configure hub + mirror")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -234,6 +238,13 @@ func runInit(ctx context.Context, args []string) error {
 	if *remote != "" {
 		cfg.HubRemote = *remote
 	}
+	if *fromFabric || *fabricFile != "" {
+		m, err := loadFabric(*fabricFile, *fromFabric)
+		if err != nil {
+			return err
+		}
+		applyFabric(&cfg, m)
+	}
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
@@ -242,9 +253,61 @@ func runInit(ctx context.Context, args []string) error {
 	fmt.Printf("  machine: %s\n", cfg.Machine)
 	fmt.Printf("  roots:   %v\n", cfg.Roots)
 	fmt.Printf("  hub:     %s\n", hubLabel(cfg))
+	if cfg.Snapshot.Mirror.Enabled {
+		fmt.Printf("  mirror:  %s\n", mirrorLabel(cfg))
+	}
 	fmt.Println()
 	fmt.Println(paint(dim, "next: poppy scan"))
 	return nil
+}
+
+// loadFabric reads the fabric manifest from a local file, or discovers it over
+// the tailnet (find the closet box by tag, read the manifest from it).
+func loadFabric(file string, discover bool) (*discovery.Manifest, error) {
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		m, err := discovery.Parse(data)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.Validate(); err != nil {
+			return nil, err
+		}
+		return m, nil
+	}
+	if !tailnet.Available() {
+		return nil, fmt.Errorf("tailscale CLI not installed; pass --fabric-file to read a local manifest")
+	}
+	st, err := tailnet.Fetch()
+	if err != nil {
+		return nil, err
+	}
+	return discovery.Resolve(st, "", discovery.SSHReader(""))
+}
+
+// applyFabric fills hub and mirror from a fabric manifest, leaving an explicit
+// --hub in place (a flag beats the manifest).
+func applyFabric(cfg *config.Config, m *discovery.Manifest) {
+	if m.Hub.Remote != "" && cfg.HubRemote == "" {
+		cfg.HubRemote = m.Hub.Remote
+	}
+	if m.Mirror.Dir != "" {
+		cfg.Snapshot.Enabled = true
+		cfg.Snapshot.Mirror.Enabled = true
+		cfg.Snapshot.Mirror.Host = m.Mirror.Host
+		cfg.Snapshot.Mirror.Dir = m.Mirror.Dir
+	}
+}
+
+func mirrorLabel(cfg config.Config) string {
+	m := cfg.Snapshot.Mirror
+	if m.Host != "" {
+		return m.Host + ":" + m.Dir
+	}
+	return m.Dir
 }
 
 func runVersion(ctx context.Context, args []string) error {
