@@ -40,6 +40,11 @@ type Config struct {
 	// StaleAfterSeconds is when a machine's heartbeat is considered stale.
 	StaleAfterSeconds int `json:"staleAfterSeconds,omitempty"`
 	// Snapshot controls the local time machine.
+	// FabricPath is the toolchain contract this machine reports against. The
+	// tool list in it decides which installed binaries poppy publishes, so a
+	// tool added to fabric.yaml is picked up without changing poppy.
+	FabricPath string `json:"fabricPath,omitempty"`
+
 	Snapshot Snapshot `json:"snapshot"`
 	// Secrets controls credential scanning.
 	Secrets Secrets `json:"secrets"`
@@ -116,6 +121,7 @@ func Defaults() Config {
 		IncludeWorktrees:    true,
 		MaxDepth:            8,
 		StaleAfterSeconds:   3600,
+		FabricPath:          "~/registry/fabric.yaml",
 		Snapshot: Snapshot{
 			Enabled:        true,
 			MaxFileBytes:   10 << 20,
