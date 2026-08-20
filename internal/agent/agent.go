@@ -22,10 +22,30 @@ import (
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
+// stamped is set by the main package from an -ldflags value. The closet
+// publisher builds from a source checkout rather than "go install module@vX",
+// and a checkout build has no module version in its build info, so without
+// this every fleet-published binary reported "dev" -- including in the machine
+// record below, which is the half of the comparison `houseparty fleet` uses to
+// detect version drift. It was diffing the pinned version against the constant
+// string "dev" for every machine.
+var stamped string
+
+// SetVersion records the version a build was stamped with. Empty values are
+// ignored so a local `go build` still falls through to the build-info path.
+func SetVersion(v string) {
+	if v != "" && v != "dev" {
+		stamped = v
+	}
+}
+
 // Version reports the agent version shown in manifests and by "poppy version".
-// When poppy is built with "go install module@vX" the module version is
-// embedded in the build info; a plain local build reports "dev".
+// Precedence: the linker stamp, then the module version that "go install
+// module@vX" embeds in build info, then "dev" for a plain local build.
 func Version() string {
+	if stamped != "" {
+		return stamped
+	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		if v := info.Main.Version; v != "" && v != "(devel)" {
 			return v
