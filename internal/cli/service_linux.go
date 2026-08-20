@@ -93,7 +93,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=%s daemon --foreground
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
