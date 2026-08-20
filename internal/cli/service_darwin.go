@@ -99,11 +99,14 @@ func renderPlist(exe, logPath string) string {
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>
+	<!-- Unconditional, not SuccessfulExit=false. The agent is meant to be
+	     always-on; restarting only after a crash meant any clean stop -- a
+	     SIGTERM at sleep, an operator stop, a unit reinstall that raced a
+	     binary swap -- left it down permanently, because nothing on the
+	     converge path reinstalls it. The Mac lost its snapshot agent twice
+	     that way, on the machine holding the only off-machine backup. -->
 	<key>KeepAlive</key>
-	<dict>
-		<key>SuccessfulExit</key>
-		<false/>
-	</dict>
+	<true/>
 	<key>ProcessType</key>
 	<string>Background</string>
 	<key>StandardOutPath</key>
