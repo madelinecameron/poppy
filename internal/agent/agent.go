@@ -136,7 +136,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		Seq:         seq,
 		Heartbeat:   time.Now().UTC(),
 		ScanMillis:  time.Since(start).Milliseconds(),
-		Daemons:     []model.Daemon{{Name: "poppy", Version: Version(), Role: "agent"}},
+		Daemons:     installedTools(ctx, a.Config.FabricPath),
 		FabricRoles: a.Config.FabricRoles,
 	}
 

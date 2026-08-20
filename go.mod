@@ -4,4 +4,4 @@ go 1.26
 
 require github.com/madelinecameron/fabric v0.2.0
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require gopkg.in/yaml.v3 v3.0.1
