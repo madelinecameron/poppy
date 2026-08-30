@@ -169,12 +169,27 @@ func TestToolsListReturnsEverySchema(t *testing.T) {
 	if len(res.Tools) != len(want) {
 		t.Errorf("listed %d tools, want %d", len(res.Tools), len(want))
 	}
+	for _, field := range []string{`"readOnlyHint":true`, `"idempotentHint":true`} {
+		if count := bytes.Count(raw, []byte(field)); count != len(want) {
+			t.Errorf("wire contract has %d %s annotations, want %d", count, field, len(want))
+		}
+	}
 	for _, tool := range res.Tools {
 		if !want[tool.Name] {
 			t.Errorf("unexpected tool %q", tool.Name)
 		}
 		if tool.Description == "" || tool.InputSchema == nil {
 			t.Errorf("tool %q missing description or schema", tool.Name)
+		}
+		if tool.Annotations == nil {
+			t.Errorf("tool %q missing annotations", tool.Name)
+			continue
+		}
+		if !tool.Annotations.ReadOnlyHint {
+			t.Errorf("tool %q is not marked read-only", tool.Name)
+		}
+		if !tool.Annotations.IdempotentHint {
+			t.Errorf("tool %q is not marked idempotent", tool.Name)
 		}
 	}
 }

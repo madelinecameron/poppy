@@ -86,9 +86,15 @@ type serverInfo struct {
 
 // toolDescriptor is one entry in a tools/list response.
 type toolDescriptor struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	InputSchema map[string]any   `json:"inputSchema"`
+	Annotations *toolAnnotations `json:"annotations,omitempty"`
+}
+
+type toolAnnotations struct {
+	ReadOnlyHint   bool `json:"readOnlyHint"`
+	IdempotentHint bool `json:"idempotentHint"`
 }
 
 type toolsListResult struct {
