@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/madelinecameron/fabric/discovery"
-	"github.com/madelinecameron/fabric/tailnet"
 	"github.com/madelinecameron/poppy/internal/agent"
 	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/workplace-protocols/discovery"
+	"github.com/madelinecameron/workplace-protocols/tailnet"
 )
 
 func runScan(ctx context.Context, args []string) error {
@@ -194,7 +194,7 @@ func daemonStatus() error {
 }
 
 // runningDaemon reports the pid recorded in the pidfile when that process is
-// still alive, so a stale pidfile left by a crashed daemon reads as stopped.
+// still alive, so a stale pidfile left by a failed daemon reads as stopped.
 func runningDaemon() (int, bool) {
 	data, err := os.ReadFile(daemonPidPath())
 	if err != nil {
@@ -224,8 +224,8 @@ func runInit(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	force := fs.Bool("force", false, "overwrite an existing configuration")
 	remote := fs.String("hub", "", "git URL of the shared hub repository")
-	fromFabric := fs.Bool("from-fabric", false, "discover fabric.yaml over the tailnet to self-configure hub + mirror")
-	fabricFile := fs.String("fabric-file", "", "read a local fabric.yaml to self-configure hub + mirror")
+	fromWorkplaceProtocols := fs.Bool("from-workplace-protocols", false, "discover workplace-protocols.yaml over the tailnet to self-configure hub + mirror")
+	workplaceProtocolsFile := fs.String("workplace-protocols-file", "", "read a local workplace-protocols.yaml to self-configure hub + mirror")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -238,12 +238,12 @@ func runInit(ctx context.Context, args []string) error {
 	if *remote != "" {
 		cfg.HubRemote = *remote
 	}
-	if *fromFabric || *fabricFile != "" {
-		m, err := loadFabric(*fabricFile, *fromFabric)
+	if *fromWorkplaceProtocols || *workplaceProtocolsFile != "" {
+		m, err := loadWorkplaceProtocols(*workplaceProtocolsFile, *fromWorkplaceProtocols)
 		if err != nil {
 			return err
 		}
-		applyFabric(&cfg, m)
+		applyWorkplaceProtocols(&cfg, m)
 	}
 	if err := config.Save(cfg); err != nil {
 		return err
@@ -261,9 +261,9 @@ func runInit(ctx context.Context, args []string) error {
 	return nil
 }
 
-// loadFabric reads the fabric manifest from a local file, or discovers it over
-// the tailnet (find the closet box by tag, read the manifest from it).
-func loadFabric(file string, discover bool) (*discovery.Manifest, error) {
+// loadWorkplaceProtocols reads the workplace protocol manifest from a local
+// file, or discovers it over the tailnet.
+func loadWorkplaceProtocols(file string, discover bool) (*discovery.Manifest, error) {
 	if file != "" {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -279,7 +279,7 @@ func loadFabric(file string, discover bool) (*discovery.Manifest, error) {
 		return m, nil
 	}
 	if !tailnet.Available() {
-		return nil, fmt.Errorf("tailscale CLI not installed; pass --fabric-file to read a local manifest")
+		return nil, fmt.Errorf("tailscale CLI not installed; pass --workplace-protocols-file to read a local manifest")
 	}
 	st, err := tailnet.Fetch()
 	if err != nil {
@@ -288,9 +288,9 @@ func loadFabric(file string, discover bool) (*discovery.Manifest, error) {
 	return discovery.Resolve(st, "", discovery.SSHReader(""))
 }
 
-// applyFabric fills hub and mirror from a fabric manifest, leaving an explicit
-// --hub in place (a flag beats the manifest).
-func applyFabric(cfg *config.Config, m *discovery.Manifest) {
+// applyWorkplaceProtocols fills hub and mirror from a workplace protocol
+// manifest, leaving an explicit --hub in place.
+func applyWorkplaceProtocols(cfg *config.Config, m *discovery.Manifest) {
 	if m.Hub.Remote != "" && cfg.HubRemote == "" {
 		cfg.HubRemote = m.Hub.Remote
 	}

@@ -31,7 +31,7 @@ func writeTool(t *testing.T, dir, name, arg, out string) {
 
 func TestReadContractPullsToolNamesAndRoles(t *testing.T) {
 	dir := t.TempDir()
-	f := filepath.Join(dir, "fabric.yaml")
+	f := filepath.Join(dir, "workplace-protocols.yaml")
 	os.WriteFile(f, []byte(`
 tailnet: example.ts.net
 toolchain:

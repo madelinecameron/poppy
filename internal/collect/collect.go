@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/madelinecameron/fabric/repoid"
 	"github.com/madelinecameron/poppy/internal/gitx"
 	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/workplace-protocols/repoid"
 )
 
 // Collector reads repository state for one machine.

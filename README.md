@@ -46,14 +46,20 @@ poppy init --hub ssh://devbox.tailnet.ts.net/~/poppy-hub.git
 poppy scan
 ```
 
-Or self-configure the hub and mirror from a shared fabric manifest instead of
-passing flags — `--from-fabric` discovers it over the tailnet (find the closet
-box by tag, read `fabric.yaml` from it), `--fabric-file` reads a local copy:
+Or self-configure the hub and mirror from the shared workplace protocol
+manifest instead of passing flags. `--from-workplace-protocols` discovers it
+over the tailnet; `--workplace-protocols-file` reads a local copy:
 
 ```sh
-poppy init --from-fabric          # discover over the tailnet
-poppy init --fabric-file ./fabric.yaml
+poppy init --from-workplace-protocols
+poppy init --workplace-protocols-file ./workplace-protocols.yaml
 ```
+
+This is a clean-break configuration change. Regenerate an existing config with
+the new flags, or update its keys to `workplaceProtocolsPath` and
+`workplaceProtocolsRoles`. Machine manifests now publish
+`workplaceProtocolsRoles`; consumers must switch to that field at the same
+time.
 
 `poppy init` writes `~/.config/poppy/config.json`:
 

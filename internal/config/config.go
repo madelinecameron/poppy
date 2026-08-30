@@ -33,17 +33,17 @@ type Config struct {
 	MaxDepth int `json:"maxDepth,omitempty"`
 	// IncludeWorktrees reports linked worktrees as their own entries.
 	IncludeWorktrees bool `json:"includeWorktrees"`
-	// FabricRoles are the roles this machine plays in the fabric (e.g. "closet",
+	// WorkplaceProtocolsRoles are the protocol roles this machine plays (e.g. "closet",
 	// "hub-host", "registry-host"), published in the machine's manifest so the
 	// fleet is discoverable without a coordinator.
-	FabricRoles []string `json:"fabricRoles,omitempty"`
+	WorkplaceProtocolsRoles []string `json:"workplaceProtocolsRoles,omitempty"`
 	// StaleAfterSeconds is when a machine's heartbeat is considered stale.
 	StaleAfterSeconds int `json:"staleAfterSeconds,omitempty"`
 	// Snapshot controls the local time machine.
-	// FabricPath is the toolchain contract this machine reports against. The
+	// WorkplaceProtocolsPath is the toolchain contract this machine reports against. The
 	// tool list in it decides which installed binaries poppy publishes, so a
-	// tool added to fabric.yaml is picked up without changing poppy.
-	FabricPath string `json:"fabricPath,omitempty"`
+	// tool added to workplace-protocols.yaml is picked up without changing poppy.
+	WorkplaceProtocolsPath string `json:"workplaceProtocolsPath,omitempty"`
 
 	Snapshot Snapshot `json:"snapshot"`
 	// Secrets controls credential scanning.
@@ -115,13 +115,13 @@ type Mirror struct {
 // Defaults returns the configuration used when none has been written.
 func Defaults() Config {
 	return Config{
-		Machine:             hostname(),
-		Roots:               []string{"~/code"},
-		ScanIntervalSeconds: 300,
-		IncludeWorktrees:    true,
-		MaxDepth:            8,
-		StaleAfterSeconds:   3600,
-		FabricPath:          "~/registry/fabric.yaml",
+		Machine:                hostname(),
+		Roots:                  []string{"~/code"},
+		ScanIntervalSeconds:    300,
+		IncludeWorktrees:       true,
+		MaxDepth:               8,
+		StaleAfterSeconds:      3600,
+		WorkplaceProtocolsPath: "~/.dev-config/workplace-protocols.yaml",
 		Snapshot: Snapshot{
 			Enabled:        true,
 			MaxFileBytes:   10 << 20,

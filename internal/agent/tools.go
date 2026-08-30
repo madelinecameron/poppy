@@ -23,13 +23,13 @@ import (
 // them -- could never be anything but "missing" in that diff, however current it
 // actually was.
 //
-// The contract itself supplies the list, so a tool added to fabric.yaml is
+// The contract itself supplies the list, so a tool added to workplace-protocols.yaml is
 // picked up without touching poppy. Names are looked up beside poppy's own
 // binary rather than in a hardcoded directory: the fleet installs every tool
 // into the same place, so wherever this process was started from is the right
 // place to look.
-func installedTools(ctx context.Context, fabricPath string) []model.Daemon {
-	entries := readContract(fabricPath)
+func installedTools(ctx context.Context, workplaceProtocolsPath string) []model.Daemon {
+	entries := readContract(workplaceProtocolsPath)
 	if len(entries) == 0 {
 		// No contract to read: still report ourselves, which is strictly better
 		// than publishing nothing and reading as "poppy not installed".
@@ -54,13 +54,13 @@ func installedTools(ctx context.Context, fabricPath string) []model.Daemon {
 	return out
 }
 
-// contractTool is the subset of a fabric.yaml toolchain entry we need.
+// contractTool is the subset of a workplace-protocols.yaml toolchain entry we need.
 type contractTool struct {
 	Name string `yaml:"name"`
 	Role string `yaml:"role"`
 }
 
-// readContract pulls the tool list out of fabric.yaml. Every failure is silent
+// readContract pulls the tool list out of workplace-protocols.yaml. Every failure is silent
 // and returns nothing: a machine with no contract on disk must still publish a
 // scan, and a parse error here should never be able to stop one.
 func readContract(path string) []contractTool {
