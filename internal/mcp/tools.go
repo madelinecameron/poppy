@@ -15,6 +15,9 @@ import (
 // registry lists the read-only tools the server exposes.
 func registry() []tool {
 	noArgs := map[string]any{"type": "object", "properties": map[string]any{}}
+	readOnly := func() *toolAnnotations {
+		return &toolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
+	}
 
 	return []tool{
 		{
@@ -22,6 +25,7 @@ func registry() []tool {
 				Name:        "fleet_status",
 				Description: "Overview of every machine in the fleet: last seen, and how many repositories are dirty, unpushed, or have off-machine snapshots.",
 				InputSchema: noArgs,
+				Annotations: readOnly(),
 			},
 			handle: fleetStatus,
 		},
@@ -30,6 +34,7 @@ func registry() []tool {
 				Name:        "dirty_trees",
 				Description: "Every working tree with uncommitted changes anywhere in the fleet, oldest first, with which machine holds it and whether it is backed up.",
 				InputSchema: noArgs,
+				Annotations: readOnly(),
 			},
 			handle: dirtyTrees,
 		},
@@ -47,6 +52,7 @@ func registry() []tool {
 					},
 					"required": []string{"query"},
 				},
+				Annotations: readOnly(),
 			},
 			handle: findWork,
 		},
@@ -62,6 +68,7 @@ func registry() []tool {
 					},
 					"required": []string{"machine", "repo"},
 				},
+				Annotations: readOnly(),
 			},
 			handle: repoState,
 		},
@@ -78,6 +85,7 @@ func registry() []tool {
 					},
 					"required": []string{"machine", "repo"},
 				},
+				Annotations: readOnly(),
 			},
 			handle: snapshotHistory,
 		},
@@ -98,6 +106,7 @@ func registry() []tool {
 						},
 					},
 				},
+				Annotations: readOnly(),
 			},
 			handle: secretFindings,
 		},
@@ -111,6 +120,7 @@ func registry() []tool {
 						"machine": map[string]any{"type": "string", "description": "Optional machine to focus on."},
 					},
 				},
+				Annotations: readOnly(),
 			},
 			handle: whereWasI,
 		},
