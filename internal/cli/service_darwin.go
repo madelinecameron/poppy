@@ -58,7 +58,7 @@ func installService() error {
 	fmt.Printf("%s poppy service installed\n", paint(green, "ok"))
 	fmt.Printf("  plist: %s\n", path)
 	fmt.Printf("  logs:  %s\n", daemonLogPath())
-	fmt.Println(paint(dim, "starts at login and restarts on crash; remove with: poppy daemon --uninstall"))
+	fmt.Println(paint(dim, "starts at login and restarts on failure; remove with: poppy daemon --uninstall"))
 	return nil
 }
 
@@ -100,7 +100,7 @@ func renderPlist(exe, logPath string) string {
 	<key>RunAtLoad</key>
 	<true/>
 	<!-- Unconditional, not SuccessfulExit=false. The agent is meant to be
-	     always-on; restarting only after a crash meant any clean stop -- a
+	     always-on; restarting only after a failure meant any clean stop -- a
 	     SIGTERM at sleep, an operator stop, a unit reinstall that raced a
 	     binary swap -- left it down permanently, because nothing on the
 	     converge path reinstalls it. The Mac lost its snapshot agent twice

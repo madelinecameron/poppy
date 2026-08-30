@@ -1,0 +1,9 @@
+186df54411b1c7325e187ac536f241a36f3fc899:internal/secrets/secrets_test.go:generic-api-key:124
+186df54411b1c7325e187ac536f241a36f3fc899:internal/secrets/secrets_test.go:generic-api-key:125
+186df54411b1c7325e187ac536f241a36f3fc899:internal/secrets/secrets_test.go:generic-api-key:133
+186df54411b1c7325e187ac536f241a36f3fc899:internal/secrets/secrets_test.go:generic-api-key:193
+186df54411b1c7325e187ac536f241a36f3fc899:internal/secrets/secrets_test.go:private-key:110
+966def39078674c44fbd3db68b1633acd37c3f26:internal/secretscan/gitleaks_test.go:aws-access-token:20
+966def39078674c44fbd3db68b1633acd37c3f26:internal/secretscan/gitleaks_test.go:aws-access-token:21
+966def39078674c44fbd3db68b1633acd37c3f26:internal/secretscan/gitleaks_test.go:aws-access-token:54
+966def39078674c44fbd3db68b1633acd37c3f26:internal/secretscan/secretscan_test.go:generic-api-key:113

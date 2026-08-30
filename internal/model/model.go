@@ -24,12 +24,12 @@ type Manifest struct {
 	Heartbeat  time.Time `json:"heartbeat"`
 	ScanMillis int64     `json:"scanMillis"`
 
-	// Daemons and FabricRoles are the machine's capability advertisement: what
-	// tools run here and what roles it plays in the fabric. Aggregated across
+	// Daemons and WorkplaceProtocolsRoles are the machine's capability advertisement: what
+	// tools run here and what protocol roles it plays. Aggregated across
 	// machines, they answer "what is out there" as a read over published state,
 	// with no central coordinator to query.
-	Daemons     []Daemon `json:"daemons,omitempty"`
-	FabricRoles []string `json:"fabricRoles,omitempty"`
+	Daemons                 []Daemon `json:"daemons,omitempty"`
+	WorkplaceProtocolsRoles []string `json:"workplaceProtocolsRoles,omitempty"`
 }
 
 // Daemon is one long-running tool advertised by a machine.
