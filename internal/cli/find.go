@@ -24,7 +24,7 @@ func runFind(ctx context.Context, args []string) error {
 		return errors.New("find: give a repository or branch name to look for")
 	}
 
-	_, store, err := setup(ctx)
+	_, store, err := setupRead()
 	if err != nil {
 		return err
 	}

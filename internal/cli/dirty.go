@@ -21,7 +21,7 @@ func runDirty(ctx context.Context, args []string) error {
 		return err
 	}
 
-	_, store, err := setup(ctx)
+	_, store, err := setupRead()
 	if err != nil {
 		return err
 	}

@@ -46,6 +46,26 @@ func Open(ctx context.Context, dir, remote string) (*Store, error) {
 	return s, nil
 }
 
+// OpenRead prepares a read-only view of the hub repository at dir. It creates
+// nothing and writes nothing: no directory, no clone, and none of the git
+// identity Open pins. A reader that had to write first would fail on any
+// account that cannot, which is exactly the account a status pane runs as, and
+// it would leave a git repository behind on a machine that only ever looked.
+//
+// The returned store can Pull and Fleet, which is the whole read surface.
+// Publish needs the identity, so writers must still use Open.
+func OpenRead(dir, remote string) *Store {
+	return &Store{Dir: dir, Remote: remote, git: gitx.New(dir)}
+}
+
+// Exists reports whether a hub repository is present. A missing hub is not an
+// empty fleet -- it means this machine has never recorded anything -- and a
+// reader should say so rather than report a confident zero.
+func (s *Store) Exists() bool {
+	_, err := os.Stat(filepath.Join(s.Dir, ".git"))
+	return err == nil
+}
+
 func (s *Store) ensure(ctx context.Context) error {
 	if _, err := os.Stat(filepath.Join(s.Dir, ".git")); err == nil {
 		return s.configure(ctx)

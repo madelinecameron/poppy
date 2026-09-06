@@ -113,7 +113,8 @@ func (e exitCode) Error() string { return fmt.Sprintf("exit status %d", int(e)) 
 // commit and has no business touching the shared state repository.
 func loadConfigOnly() (config.Config, error) { return config.Load() }
 
-// setup loads configuration and opens the local hub store.
+// setup loads configuration and opens the local hub store for writing,
+// creating it when absent. Only the commands that record state need this.
 func setup(ctx context.Context) (config.Config, *hub.Store, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -122,6 +123,27 @@ func setup(ctx context.Context) (config.Config, *hub.Store, error) {
 	store, err := hub.Open(ctx, filepath.Join(config.DataDir(), "hub"), cfg.HubRemote)
 	if err != nil {
 		return cfg, nil, err
+	}
+	return cfg, store, nil
+}
+
+// setupRead loads configuration and opens the hub for reading. Reading has no
+// business creating the shared state repository or pinning an identity in it;
+// those are the publish path's needs, and making a reader satisfy them means
+// every read fails on an account that cannot write. It also means a machine
+// that only ever asked a question ends up with a git repository it never used.
+//
+// A hub that is not there is reported rather than treated as an empty fleet,
+// because the two are different answers and only one of them is a number.
+func setupRead() (config.Config, *hub.Store, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return cfg, nil, err
+	}
+	dir := filepath.Join(config.DataDir(), "hub")
+	store := hub.OpenRead(dir, cfg.HubRemote)
+	if !store.Exists() {
+		return cfg, nil, fmt.Errorf("no hub at %s — run \"poppy scan\" to record this machine", dir)
 	}
 	return cfg, store, nil
 }
