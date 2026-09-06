@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -258,5 +259,73 @@ func TestFleetOnEmptyStore(t *testing.T) {
 	}
 	if len(fleet.Machines) != 0 {
 		t.Errorf("machines = %v, want none", machineNames(fleet))
+	}
+}
+
+// readOnly makes dir unwritable for the rest of the test, restoring the mode
+// afterwards so the temporary directory can still be removed.
+func readOnly(t *testing.T, dir string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat %s: %v", dir, err)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, info.Mode()) })
+}
+
+func TestOpenReadCreatesNothingWhereOpenWouldFail(t *testing.T) {
+	parent := t.TempDir()
+	readOnly(t, parent)
+	dir := filepath.Join(parent, "hub")
+
+	if _, err := Open(context.Background(), dir, ""); err == nil {
+		t.Fatal("Open on an unwritable parent succeeded; the test no longer covers the failure")
+	}
+
+	s := OpenRead(dir, "")
+	if s.Exists() {
+		t.Error("Exists() = true for a hub that was never created")
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("OpenRead created %s; a read must leave nothing behind", dir)
+	}
+}
+
+func TestOpenReadServesFleetFromAnUnwritableHub(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "hub")
+	s := openStore(t, dir, "")
+	repos := []model.Repo{repoFor("laptop", "poppy", 3)}
+	if _, err := s.Publish(context.Background(), manifestFor("laptop", len(repos)), repos); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	// Both the work tree and the git directory: pinning an identity rewrites
+	// .git/config through a lock file beside it.
+	readOnly(t, filepath.Join(dir, ".git"))
+	readOnly(t, dir)
+
+	if _, err := Open(context.Background(), dir, ""); err == nil {
+		t.Fatal("Open succeeded on an unwritable hub; it is expected to write")
+	}
+
+	r := OpenRead(dir, "")
+	if !r.Exists() {
+		t.Fatal("Exists() = false for a hub that is present")
+	}
+	fleet, err := r.Fleet()
+	if err != nil {
+		t.Fatalf("fleet: %v", err)
+	}
+	if got := machineNames(fleet); len(got) != 1 || got[0] != "laptop" {
+		t.Fatalf("machines = %v, want [laptop]", got)
+	}
+	if got := len(fleet.Machines[0].Repos); got != 1 {
+		t.Fatalf("repos = %d, want 1", got)
 	}
 }

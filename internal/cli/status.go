@@ -22,7 +22,7 @@ func runStatus(ctx context.Context, args []string) error {
 		return err
 	}
 
-	cfg, store, err := setup(ctx)
+	cfg, store, err := setupRead()
 	if err != nil {
 		return err
 	}
