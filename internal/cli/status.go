@@ -116,6 +116,10 @@ func printFleet(fleet model.Fleet, thisMachine string, staleAfter time.Duration,
 	}
 	fmt.Printf("%s  %s\n", paint(bold, "FLEET"), strings.Join(summary, " · "))
 
+	// Directly under the fleet counts, because a hub nobody can write to
+	// makes every number above it a local one.
+	printHubIntegrity(os.Stdout, fleet.HubIntegrity(), now)
+
 	for _, m := range fleet.Machines {
 		fmt.Println()
 		printMachine(m, thisMachine, staleAfter, now, all)

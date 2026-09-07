@@ -97,8 +97,66 @@ poppy find auth-refactor  # where is this branch?
 poppy machines            # agents, versions, heartbeats
 poppy scan                # scan once now
 poppy secrets             # credentials found across the fleet
+poppy hub-check           # is the hub repository itself intact?
 poppy status --json       # for scripting
 ```
+
+## Hub integrity
+
+Each scan also looks at the hub repository itself, on the host that holds it,
+and reports what it found in `poppy status` and in every machine's document.
+
+It exists because of an outage. A host restart mid-push left thirteen
+zero-length objects in the hub's object store. Git degraded around them
+quietly: it warned once about a pack index, ignored the bad pack, and resolved
+refs anyway. Every git command poppy ran succeeded, so the scan had nothing to
+report, and the hub received nothing for sixteen days before anyone noticed.
+
+So the check does not go through git. Two checks run side by side on the hub
+host, against its files:
+
+- a filesystem sweep for zero-length files anywhere under `objects/`, including
+  the pack directory — this is the one that would have caught the outage;
+- `git fsck --full --strict`, as a second opinion on damage the sweep cannot
+  see, such as a corrupted object that is not empty.
+
+**A report always says whether it ran.** "Ran and found nothing" and "did not
+run" are different answers and never render the same way: a verdict is `clean`
+only when both checks actually examined the repository, and every way of not
+having looked — unreachable host, no hub configured, a check turned off, a
+report that arrived truncated — prints as `NOT CHECKED` with the reason. A
+fleet where one machine reports cleanly and another could not look shows both
+facts, because showing only the first is how the last outage stayed invisible.
+
+```sh
+poppy hub-check                    # check the hub this machine publishes to
+poppy hub-check --json             # the full result
+poppy hub-check --no-fsck          # sweep only
+poppy hub-check --local --repo ... # a repository on this machine
+```
+
+It exits non-zero on anything that is not clean, silence included.
+
+### Reaching the hub host
+
+The check runs shell commands on the host that holds the repository, so it
+cannot use the hub's own remote URL: that account's shell is `git-shell`, which
+answers git commands and rejects everything else. Poppy therefore takes the
+repository path from `hubRemote` and the account from `hubCheck.host`, falling
+back to `snapshot.mirror.host` — the same machine, and an account poppy already
+reaches every cycle. With neither set, the check reports itself as unconfigured
+rather than going quiet. Read access is all it needs; it never writes.
+
+A poppy installed on the hub host itself needs no ssh at all: the same two
+checks run locally when the hub path is a local one.
+
+`git fsck --full --strict` over a 136 MB hub measures about 16 seconds. It runs
+every cycle by default, which is the cadence the rest of the scan uses; set
+`hubCheck.fsckIntervalSeconds` to give it a longer gap on a fleet with several
+publishing machines. A cycle that skips the fsck says so, and its verdict is not
+clean. A restart of the hub host runs one regardless of that setting, because a
+restart mid-write is the condition that produced the corruption in the first
+place.
 
 ## Secrets
 
@@ -314,6 +372,11 @@ Then ask, from any machine: *"what was I working on on the devbox?"*
 | `secrets.maxFindings` | most findings recorded per repo (default 200) |
 | `secrets.timeoutSeconds` | bound on one repository's scan (default 60) |
 | `secrets.excludeRepos` | glob patterns of repositories never scanned |
+| `hubCheck.enabled` | check the hub repository each cycle (default true) |
+| `hubCheck.host` | SSH target on the hub host with a real shell (empty = the mirror's) |
+| `hubCheck.repo` | repository path on that host (empty = derived from `hubRemote`) |
+| `hubCheck.fsckIntervalSeconds` | shortest gap between full fsck runs (default 0, every cycle) |
+| `hubCheck.timeoutSeconds` | bound on one check (default 120) |
 
 `node_modules`, `vendor`, `.venv`, `target`, and similar directories are always
 skipped. Nested repositories below a repository root are treated as submodules

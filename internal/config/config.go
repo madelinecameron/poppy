@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madelinecameron/poppy/internal/hubcheck"
 	"github.com/madelinecameron/poppy/internal/mirror"
 	"github.com/madelinecameron/poppy/internal/secretscan"
 	"github.com/madelinecameron/poppy/internal/snapshot"
@@ -48,6 +49,39 @@ type Config struct {
 	Snapshot Snapshot `json:"snapshot"`
 	// Secrets controls credential scanning.
 	Secrets Secrets `json:"secrets"`
+	// HubCheck controls the integrity check of the shared hub repository.
+	HubCheck HubCheck `json:"hubCheck"`
+}
+
+// HubCheck configures the integrity check of the shared hub repository.
+//
+// The check runs on the host that holds the repository, against its files. It
+// cannot run through the hub remote's own account: that account's shell is
+// git-shell, which answers git commands and rejects everything else, so a
+// filesystem sweep sent to it comes back "unrecognized command".
+type HubCheck struct {
+	// Enabled runs the check as part of each scan.
+	Enabled bool `json:"enabled"`
+	// Host is an ssh target on the hub host with a real shell. Empty falls
+	// back to the snapshot mirror's host, which is the same machine and an
+	// account poppy already proves it can reach every cycle. Empty with no
+	// mirror configured leaves the check unconfigured, and it says so.
+	Host string `json:"host,omitempty"`
+	// Repo overrides the repository path, which is otherwise taken from
+	// hubRemote so the check examines the repository poppy actually publishes
+	// to rather than a second setting that can drift from it.
+	Repo string `json:"repo,omitempty"`
+	// FsckIntervalSeconds is the shortest gap between full fsck runs. Zero
+	// runs one every cycle, which is the cadence the decision asks for; a full
+	// --strict fsck of the 136MB fleet hub measured 16.5s, so an operator with
+	// several publishing machines may want a longer gap here. A cycle that
+	// skips the fsck says it skipped it, and its verdict is never clean.
+	//
+	// A restart of the hub host runs the fsck whatever this says, because a
+	// restart mid-write is the condition that produced the corruption.
+	FsckIntervalSeconds int `json:"fsckIntervalSeconds,omitempty"`
+	// TimeoutSeconds bounds one check.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
 }
 
 // Secrets configures the credential scanner. Every bound is explicit: a scan
@@ -127,6 +161,10 @@ func Defaults() Config {
 			MaxFileBytes:   10 << 20,
 			KeepAllHours:   7 * 24,
 			KeepDailyHours: 90 * 24,
+		},
+		HubCheck: HubCheck{
+			Enabled:        true,
+			TimeoutSeconds: int(hubcheck.DefaultTimeout.Seconds()),
 		},
 		Secrets: Secrets{
 			Enabled:            true,
@@ -301,7 +339,48 @@ func (c Config) withDefaults() Config {
 	if c.Secrets.TimeoutSeconds <= 0 {
 		c.Secrets.TimeoutSeconds = d.Secrets.TimeoutSeconds
 	}
+	if c.HubCheck.TimeoutSeconds <= 0 {
+		c.HubCheck.TimeoutSeconds = d.HubCheck.TimeoutSeconds
+	}
 	return c
+}
+
+// HubCheckTarget resolves what the integrity check should examine and where.
+//
+// The second return is a reason a person can act on when there is nothing to
+// check, which is recorded in the document rather than dropped: "this machine
+// has no hub host configured" and "this machine looked and found nothing" must
+// not arrive at a reader as the same silence.
+func (c Config) HubCheckTarget() (hubcheck.Options, string) {
+	opts := hubcheck.Options{
+		Repo:    c.HubCheck.Repo,
+		Host:    c.HubCheck.Host,
+		Timeout: time.Duration(c.HubCheck.TimeoutSeconds) * time.Second,
+	}
+	if opts.Repo == "" {
+		opts.Repo = hubcheck.RepoPathFromRemote(c.HubRemote)
+	}
+	if opts.Repo == "" {
+		return opts, "this machine publishes to no hub repository whose files can be checked"
+	}
+	if opts.Host == "" && remoteIsElsewhere(c.HubRemote) {
+		opts.Host = c.Snapshot.Mirror.MirrorConfig().Host
+		if opts.Host == "" {
+			return opts, "the hub is on another host and no hubCheck.host names an account there with a shell"
+		}
+	}
+	return opts, ""
+}
+
+// remoteIsElsewhere reports whether the hub lives on another machine, which is
+// what decides between running the check here and running it over ssh.
+func remoteIsElsewhere(remote string) bool {
+	return strings.Contains(remote, "://") || strings.Contains(remote, ":")
+}
+
+// FsckInterval is the shortest gap between full fsck runs.
+func (h HubCheck) FsckInterval() time.Duration {
+	return time.Duration(h.FsckIntervalSeconds) * time.Second
 }
 
 // Save writes the configuration, creating parent directories.

@@ -4,6 +4,7 @@ package model
 import (
 	"time"
 
+	"github.com/madelinecameron/poppy/internal/hubcheck"
 	"github.com/madelinecameron/poppy/internal/secrets"
 )
 
@@ -30,6 +31,15 @@ type Manifest struct {
 	// with no central coordinator to query.
 	Daemons                 []Daemon `json:"daemons,omitempty"`
 	WorkplaceProtocolsRoles []string `json:"workplaceProtocolsRoles,omitempty"`
+
+	// Hub is this machine's most recent look at the shared hub repository's
+	// files, on the host that holds them. It is recorded even when the check
+	// did not run, because a missing section and a clean one are the two
+	// things this whole check exists to keep apart.
+	//
+	// A nil Hub means the document was written by a poppy from before the
+	// check existed. That is not health either, and Result.Verdict says so.
+	Hub *hubcheck.Result `json:"hub,omitempty"`
 }
 
 // Daemon is one long-running tool advertised by a machine.
@@ -209,4 +219,94 @@ type MachineState struct {
 // Stale reports whether the machine's heartbeat is older than d.
 func (m MachineState) Stale(now time.Time, d time.Duration) bool {
 	return now.Sub(m.Manifest.Heartbeat) > d
+}
+
+// HubReport is one machine's account of the shared hub repository.
+type HubReport struct {
+	Machine string           `json:"machine"`
+	Result  *hubcheck.Result `json:"result"`
+}
+
+// Verdict is what this machine's check amounts to, including the case where
+// the machine recorded no check at all.
+func (h HubReport) Verdict() hubcheck.Status { return h.Result.Verdict() }
+
+// HubIntegrity is the fleet's view of the one hub repository every publishing
+// machine writes to.
+type HubIntegrity struct {
+	// Verdict is clean only when some machine's check actually ran and found
+	// nothing. It is never clean because nobody looked.
+	Verdict hubcheck.Status `json:"verdict"`
+	// LastRan is the most recent check that actually examined the repository,
+	// and Ran counts how many machines managed it this cycle.
+	LastRan time.Time `json:"lastRan,omitempty"`
+	Ran     int       `json:"ran"`
+	// Silent counts machines that should be checking and are not — a failed
+	// ssh, a skipped fsck, a document with no check in it. This number is the
+	// answer to "is a clean report a real one", so it is reported next to the
+	// verdict and never folded into it.
+	Silent int `json:"silent"`
+	// Reports carries every machine's account, so a reader can see which
+	// machines are behind a verdict and which are saying nothing.
+	Reports []HubReport `json:"reports,omitempty"`
+}
+
+// HubIntegrity assembles the fleet's view of the hub repository.
+//
+// Machines with no hub to check are counted as neither answering nor silent: a
+// local-only poppy is not failing at something it was never asked to do.
+func (f Fleet) HubIntegrity() HubIntegrity {
+	h := HubIntegrity{Verdict: hubcheck.StatusUnknown}
+	var worstAbsence hubcheck.Status
+
+	for _, m := range f.Machines {
+		report := HubReport{Machine: m.Manifest.Machine, Result: m.Manifest.Hub}
+		verdict := report.Verdict()
+		if verdict == hubcheck.StatusNotConfigured {
+			continue
+		}
+		h.Reports = append(h.Reports, report)
+
+		switch {
+		case verdict == hubcheck.StatusFound:
+			h.Ran++
+			h.Verdict = hubcheck.StatusFound
+		case verdict == hubcheck.StatusClean:
+			h.Ran++
+			if h.Verdict != hubcheck.StatusFound {
+				h.Verdict = hubcheck.StatusClean
+			}
+		default:
+			h.Silent++
+			if absenceRank(verdict) > absenceRank(worstAbsence) {
+				worstAbsence = verdict
+			}
+		}
+		// A check that ran at all — clean or not — dates the fleet's answer.
+		if verdict.Ran() && m.Manifest.Hub.CheckedAt.After(h.LastRan) {
+			h.LastRan = m.Manifest.Hub.CheckedAt
+		}
+	}
+
+	// Nothing looked. The verdict is the loudest reason nothing looked, and
+	// under no circumstances is it clean.
+	if h.Ran == 0 && h.Verdict != hubcheck.StatusFound {
+		h.Verdict = worstAbsence
+	}
+	return h
+}
+
+// absenceRank orders the ways a check can fail to happen, worst first, so the
+// fleet reports the most alarming reason rather than the last one it read.
+func absenceRank(s hubcheck.Status) int {
+	switch s {
+	case hubcheck.StatusFailed:
+		return 3
+	case hubcheck.StatusUnknown:
+		return 2
+	case hubcheck.StatusSkipped:
+		return 1
+	default:
+		return 0
+	}
 }

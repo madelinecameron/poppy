@@ -267,15 +267,26 @@ func (s *Store) Fleet() (model.Fleet, error) {
 	return fleet, nil
 }
 
-// NextSeq returns the machine's next monotonic sequence number. Sequence
-// numbers order a machine's updates without trusting wall clocks.
-func (s *Store) NextSeq(machine string) uint64 {
+// ReadManifest returns a machine's last published manifest, for carrying
+// forward what the previous cycle recorded. The second return distinguishes a
+// machine that has never published from one whose manifest is all zeroes.
+func (s *Store) ReadManifest(machine string) (model.Manifest, bool) {
 	data, err := os.ReadFile(filepath.Join(s.machineDir(machine), "manifest.json"))
 	if err != nil {
-		return 1
+		return model.Manifest{}, false
 	}
 	var m model.Manifest
 	if json.Unmarshal(data, &m) != nil {
+		return model.Manifest{}, false
+	}
+	return m, true
+}
+
+// NextSeq returns the machine's next monotonic sequence number. Sequence
+// numbers order a machine's updates without trusting wall clocks.
+func (s *Store) NextSeq(machine string) uint64 {
+	m, ok := s.ReadManifest(machine)
+	if !ok {
 		return 1
 	}
 	return m.Seq + 1

@@ -23,7 +23,7 @@ func registry() []tool {
 		{
 			descriptor: toolDescriptor{
 				Name:        "fleet_status",
-				Description: "Overview of every machine in the fleet: last seen, and how many repositories are dirty, unpushed, or have off-machine snapshots.",
+				Description: "Overview of every machine in the fleet: last seen, and how many repositories are dirty, unpushed, or have off-machine snapshots. Includes whether the shared hub repository has been checked for corruption, and by whom.",
 				InputSchema: noArgs,
 				Annotations: readOnly(),
 			},
@@ -157,6 +157,11 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 	out := struct {
 		Machines []machineView `json:"machines"`
 		Totals   totals        `json:"totals"`
+		// HubIntegrity says whether the shared hub repository has been looked
+		// at and what was found. It carries "nobody checked" as its own
+		// answer, so an agent reading this cannot mistake an unchecked hub
+		// for a healthy one.
+		HubIntegrity model.HubIntegrity `json:"hubIntegrity"`
 	}{}
 
 	for _, m := range fleet.Machines {
@@ -187,6 +192,7 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 		out.Totals.Secrets += mv.Secrets
 	}
 	out.Totals.Machines = len(fleet.Machines)
+	out.HubIntegrity = fleet.HubIntegrity()
 	return jsonText(out)
 }
 
