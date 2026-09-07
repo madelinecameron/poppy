@@ -17,6 +17,7 @@ import (
 
 	"github.com/madelinecameron/poppy/internal/agent"
 	"github.com/madelinecameron/poppy/internal/config"
+	"github.com/madelinecameron/poppy/internal/hubcheck"
 	"github.com/madelinecameron/workplace-protocols/discovery"
 	"github.com/madelinecameron/workplace-protocols/tailnet"
 )
@@ -63,6 +64,9 @@ func runScan(ctx context.Context, args []string) error {
 			if report.Err != nil {
 				fmt.Println(paint(dim, "  "+report.Err.Error()))
 			}
+		}
+		if report.Hub.Verdict() != hubcheck.StatusNotConfigured {
+			printHubResult(os.Stdout, report.Hub)
 		}
 	}
 	return nil

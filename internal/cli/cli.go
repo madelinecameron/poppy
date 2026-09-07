@@ -24,6 +24,7 @@ commands:
   scan        run one scan of this machine now
   daemon      start the background agent (--stop, --status, --install)
 
+  hub-check   check the hub repository's files on the host that holds them
   secrets     credentials found across the fleet, including in stashes and
               unpushed commits — content no remote has ever seen
   hooks       install / verify the pre-commit secret hook across repositories
@@ -61,6 +62,8 @@ func Main(ctx context.Context, args []string) int {
 		err = runMachines(ctx, rest)
 	case "scan":
 		err = runScan(ctx, rest)
+	case "hub-check":
+		err = runHubCheck(ctx, rest)
 	case "secrets":
 		err = runSecrets(ctx, rest)
 	case "hooks":

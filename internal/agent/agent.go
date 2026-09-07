@@ -4,6 +4,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"runtime"
 	"runtime/debug"
@@ -14,6 +15,7 @@ import (
 	"github.com/madelinecameron/poppy/internal/collect"
 	"github.com/madelinecameron/poppy/internal/config"
 	"github.com/madelinecameron/poppy/internal/hub"
+	"github.com/madelinecameron/poppy/internal/hubcheck"
 	"github.com/madelinecameron/poppy/internal/mirror"
 	"github.com/madelinecameron/poppy/internal/model"
 	"github.com/madelinecameron/poppy/internal/scan"
@@ -77,6 +79,9 @@ type Report struct {
 	// Findings the findings themselves.
 	Secrets  int
 	Findings int
+	// Hub is what this cycle's look at the hub repository found. It is never
+	// nil: a cycle that did not check still says so.
+	Hub      *hubcheck.Result
 	Duration time.Duration
 	Pushed   bool
 	Err      error
@@ -97,6 +102,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	// Previous state is read before publishing, which may reset the working
 	// tree, so that dirty ages survive a cycle taken while offline.
 	prev := a.Store.ReadMachine(a.Config.Machine)
+	prevManifest, _ := a.Store.ReadManifest(a.Config.Machine)
 
 	found, err := scan.Run(ctx, scan.Options{
 		Roots:            a.Config.Roots,
@@ -125,6 +131,8 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		roots = append(roots, scan.Expand(r))
 	}
 
+	hubResult := a.checkHub(ctx, prevManifest.Hub)
+
 	manifest := model.Manifest{
 		Schema:                  model.SchemaVersion,
 		Machine:                 a.Config.Machine,
@@ -138,6 +146,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		ScanMillis:              time.Since(start).Milliseconds(),
 		Daemons:                 installedTools(ctx, a.Config.WorkplaceProtocolsPath),
 		WorkplaceProtocolsRoles: a.Config.WorkplaceProtocolsRoles,
+		Hub:                     hubResult,
 	}
 
 	pushed, pubErr := a.Store.Publish(ctx, manifest, repos)
@@ -147,6 +156,7 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		Snapshots: snapshots,
 		Pruned:    pruned,
 		Synced:    synced,
+		Hub:       hubResult,
 		Duration:  time.Since(start),
 		Pushed:    pushed,
 		Err:       pubErr,
@@ -164,6 +174,62 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 		}
 	}
 	return report, nil
+}
+
+// checkHub looks at the hub repository's files on the host that holds them.
+//
+// It never returns nil and never returns an error. Whatever happened — the
+// check ran, the host was unreachable, this machine has no hub — comes back as
+// a Result whose status says which, because the whole point of this check is
+// that its absence must be as visible as its findings.
+func (a *Agent) checkHub(ctx context.Context, prev *hubcheck.Result) *hubcheck.Result {
+	if !a.Config.HubCheck.Enabled {
+		return hubcheck.NotRun(hubcheck.StatusSkipped, "hubCheck.enabled is false in this machine's configuration")
+	}
+
+	opts, reason := a.Config.HubCheckTarget()
+	if reason != "" {
+		return hubcheck.NotRun(hubcheck.StatusNotConfigured, reason)
+	}
+
+	opts.Fsck, opts.FsckSkipReason = fsckDue(prev, a.Config.HubCheck.FsckInterval(), time.Now())
+	if prev != nil {
+		opts.PrevBoot = prev.HostBoot
+	}
+
+	result := hubcheck.Run(ctx, opts)
+	switch {
+	case result.Corrupt():
+		a.Log.Error("hub repository is corrupt",
+			"repo", result.Repo, "host", result.Host,
+			"zeroLengthObjects", result.ZeroCount, "reason", result.Reason)
+	case !result.Sweep.Status.Ran():
+		// Not a warning. A check that did not run is the state that let the
+		// last outage go unnoticed for sixteen days.
+		a.Log.Error("hub repository was not checked",
+			"repo", result.Repo, "host", result.Host,
+			"sweep", result.Sweep.Status, "fsck", result.Fsck.Status,
+			"reason", result.Reason)
+	}
+	return result
+}
+
+// fsckDue decides whether this cycle runs the full fsck, and says why not when
+// it does not.
+//
+// Three cases run one regardless of the interval: no previous result, a
+// previous fsck that did not itself run, and a previous fsck that found
+// something. The last matters most — a hub already known to be broken is
+// re-examined every cycle, so the finding cannot quietly become a skip.
+func fsckDue(prev *hubcheck.Result, interval time.Duration, now time.Time) (bool, string) {
+	if interval <= 0 || prev == nil || !prev.Fsck.Status.Ran() || prev.Fsck.Status == hubcheck.StatusFound {
+		return true, ""
+	}
+	if since := now.Sub(prev.CheckedAt); since < interval {
+		return false, fmt.Sprintf("the last full fsck was %s ago; hubCheck.fsckIntervalSeconds is %s",
+			since.Round(time.Second), interval)
+	}
+	return true, ""
 }
 
 func (a *Agent) collectAll(ctx context.Context, found []scan.Found, prev map[string]model.Repo) []model.Repo {
@@ -406,6 +472,7 @@ func (a *Agent) logCycle(r Report, err error) {
 	}
 	attrs := []any{
 		"repos", r.Repos,
+		"hub", r.Hub.Verdict(),
 		"dirty", r.Dirty,
 		"unpushed", r.Unpushed,
 		"snapshots", r.Snapshots,
