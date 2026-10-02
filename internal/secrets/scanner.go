@@ -1,6 +1,9 @@
 package secrets
 
-import "bytes"
+import (
+	"bytes"
+	"slices"
+)
 
 // MaxLineBytes bounds how much of a single line is examined. Minified bundles,
 // lock files, and embedded data arrive as one enormous line; a credential is
@@ -41,8 +44,8 @@ func Scan(path string, content []byte) []Hit {
 	line := 0
 	for rest := content; len(rest) > 0; {
 		var text []byte
-		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
-			text, rest = rest[:i], rest[i+1:]
+		if before, after, ok := bytes.Cut(rest, []byte{'\n'}); ok {
+			text, rest = before, after
 		} else {
 			text, rest = rest, nil
 		}
@@ -71,12 +74,7 @@ func matches(r rule, text []byte) bool {
 	if r.verify == nil {
 		return r.re.Match(text)
 	}
-	for _, m := range r.re.FindAllSubmatch(text, -1) {
-		if r.verify(m) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(r.re.FindAllSubmatch(text, -1), r.verify)
 }
 
 // IsBinary reports whether content should be treated as binary and left

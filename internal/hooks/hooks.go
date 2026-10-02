@@ -148,7 +148,7 @@ func Uninstall(ctx context.Context, repo string) (Status, error) {
 // earlier one.
 func backupPath(hook string) (string, error) {
 	candidate := hook + ".poppy-backup"
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if i > 0 {
 			candidate = fmt.Sprintf("%s.poppy-backup.%d", hook, i)
 		}
