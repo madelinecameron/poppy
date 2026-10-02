@@ -24,13 +24,9 @@ import (
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
-// stamped is set by the main package from an -ldflags value. The closet
-// publisher builds from a source checkout rather than "go install module@vX",
-// and a checkout build has no module version in its build info, so without
-// this every fleet-published binary reported "dev" -- including in the machine
-// record below, which is the half of the comparison `houseparty fleet` uses to
-// detect version drift. It was diffing the pinned version against the constant
-// string "dev" for every machine.
+// stamped is set by the main package from an -ldflags value. A build from a
+// source checkout has no module version in its build info, so without a
+// stamp it would report "dev".
 var stamped string
 
 // SetVersion records the version a build was stamped with. Empty values are
@@ -178,10 +174,10 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 
 // checkHub looks at the hub repository's files on the host that holds them.
 //
-// It never returns nil and never returns an error. Whatever happened — the
-// check ran, the host was unreachable, this machine has no hub — comes back as
-// a Result whose status says which, because the whole point of this check is
-// that its absence must be as visible as its findings.
+// It never returns nil and never returns an error. Whatever happened (the
+// check ran, the host was unreachable, this machine has no hub) comes back as
+// a Result whose status says which, so a check that did not run is as
+// visible as one that found something.
 func (a *Agent) checkHub(ctx context.Context, prev *hubcheck.Result) *hubcheck.Result {
 	if !a.Config.HubCheck.Enabled {
 		return hubcheck.NotRun(hubcheck.StatusSkipped, "hubCheck.enabled is false in this machine's configuration")
@@ -204,8 +200,8 @@ func (a *Agent) checkHub(ctx context.Context, prev *hubcheck.Result) *hubcheck.R
 			"repo", result.Repo, "host", result.Host,
 			"zeroLengthObjects", result.ZeroCount, "reason", result.Reason)
 	case !result.Sweep.Status.Ran():
-		// Not a warning. A check that did not run is the state that let the
-		// last outage go unnoticed for sixteen days.
+		// An error, not a warning: unless it is reported, a check that did
+		// not run looks exactly like a healthy hub.
 		a.Log.Error("hub repository was not checked",
 			"repo", result.Repo, "host", result.Host,
 			"sweep", result.Sweep.Status, "fsck", result.Fsck.Status,
@@ -219,7 +215,7 @@ func (a *Agent) checkHub(ctx context.Context, prev *hubcheck.Result) *hubcheck.R
 //
 // Three cases run one regardless of the interval: no previous result, a
 // previous fsck that did not itself run, and a previous fsck that found
-// something. The last matters most — a hub already known to be broken is
+// something. The last matters most: a hub already known to be broken is
 // re-examined every cycle, so the finding cannot quietly become a skip.
 func fsckDue(prev *hubcheck.Result, interval time.Duration, now time.Time) (bool, string) {
 	if interval <= 0 || prev == nil || !prev.Fsck.Status.Ran() || prev.Fsck.Status == hubcheck.StatusFound {
@@ -265,7 +261,7 @@ func (a *Agent) collectAll(ctx context.Context, found []scan.Found, prev map[str
 
 // scanSecrets records where credentials sit in each repository: in the working
 // tree, in stashes, and in commits on branches no remote has. The last two are
-// the reason this lives in poppy at all — they are the content that exists on
+// the reason this lives in poppy at all: they are the content that exists on
 // exactly one disk, that no pre-commit hook will ever see, and that only
 // something enumerating every repository on every machine can find.
 //

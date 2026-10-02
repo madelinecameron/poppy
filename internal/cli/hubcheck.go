@@ -101,8 +101,8 @@ func printHubResult(w io.Writer, r *hubcheck.Result) {
 }
 
 // hubVerdict paints a status. Every way of not having looked is painted as
-// something to act on, because that is what it is: the outage this check exists
-// for was sixteen days of a scan reporting nothing because it never ran.
+// something to act on, because a check that never ran says nothing
+// about the hub's health.
 func hubVerdict(s hubcheck.Status) string {
 	switch s {
 	case hubcheck.StatusClean:
@@ -121,7 +121,7 @@ func hubVerdict(s hubcheck.Status) string {
 // It always prints when any machine should be checking, and it always prints
 // the count of machines that are not, alongside the verdict rather than folded
 // into it. A clean hub with a machine that could not look is two facts, and
-// showing only the first is how the last outage stayed invisible.
+// showing only the first hides the second.
 func printHubIntegrity(w io.Writer, h model.HubIntegrity, now time.Time) {
 	if len(h.Reports) == 0 {
 		return
@@ -143,9 +143,9 @@ func printHubIntegrity(w io.Writer, h model.HubIntegrity, now time.Time) {
 		}
 		result := report.Result
 		if result == nil {
-			// A machine publishing a document with no check in it at all —
-			// an older poppy. Named rather than passed over, because the
-			// silence is the finding.
+			// A machine publishing a document with no check in it at all,
+			// from an older poppy. Named rather than passed over, because the
+			// missing check is itself the finding.
 			fmt.Fprintf(w, "  %s  %s  %s\n", paint(cyan, report.Machine), hubVerdict(verdict),
 				paint(dim, "this machine records no hub check; its poppy predates one"))
 			continue

@@ -46,8 +46,8 @@ func runHooks(ctx context.Context, args []string) error {
 }
 
 // hookTargets lists the repositories to act on: one named repository, or every
-// repository beneath the configured roots — the same set the agent scans,
-// which is what makes "which of my repositories are unprotected" answerable.
+// repository beneath the configured roots. That is the same
+// set the agent scans, which is what makes "which of my repositories are unprotected" answerable.
 func hookTargets(ctx context.Context, repo string) ([]string, error) {
 	if repo != "" {
 		return []string{scan.Expand(repo)}, nil

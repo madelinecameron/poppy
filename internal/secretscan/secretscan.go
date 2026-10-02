@@ -214,7 +214,7 @@ func (s *scanner) record(loc secrets.Location, hits []secrets.Hit) {
 }
 
 // worktree scans the checked-out files: everything git tracks, plus untracked
-// files it would let you commit. Ignored files are deliberately left alone —
+// files it would let you commit. Ignored files are deliberately left alone:
 // .gitignore is poppy's secrets boundary everywhere else, and a scanner that
 // read past it would be reporting on files the rest of the tool promises never
 // to touch.
@@ -276,8 +276,8 @@ func (s *scanner) readFile(path string) ([]byte, bool) {
 }
 
 // stashBlobs lists the objects held in stashes. A stash commit has HEAD as its
-// first parent, the index as its second, and — when the stash was taken with
-// untracked files — a tree of those as its third. Diffing against the first
+// first parent, the index as its second, and (when the stash was taken with
+// untracked files) a tree of those as its third. Diffing against the first
 // parent yields what the stash actually holds; the third parent's tree is
 // listed whole, since none of it exists anywhere else at all.
 func (s *scanner) stashBlobs(ctx context.Context) ([]blob, error) {
@@ -323,8 +323,8 @@ func (s *scanner) stashBlobs(ctx context.Context) ([]blob, error) {
 
 // unpushedBlobs lists the objects introduced by commits on local branches that
 // no remote-tracking branch reaches. In a repository with no remote at all
-// that is the entire history, which is correct — such a repository exists on
-// one disk — and is what the commit bound is for.
+// that is the entire history, which is correct (such a repository exists on
+// one disk) and is what the commit bound is for.
 func (s *scanner) unpushedBlobs(ctx context.Context) ([]blob, error) {
 	total, err := s.g.Run(ctx, "rev-list", "--count", "--branches", "--not", "--remotes")
 	if err != nil {

@@ -1,8 +1,8 @@
-// Package mirror keeps each repository's snapshots on a bare repository on the
-// closet server, one per project.
+// Package mirror keeps each repository's snapshots on a bare repository on an
+// always-on server, one per project.
 //
 // A per-repository mirror means the first push of a project transfers its
-// history once and later pushes send only deltas — unlike a single shared hub,
+// history once and later pushes send only deltas, unlike a single shared hub,
 // which would hold none of the base objects and re-transfer everything. The
 // mirror doubles as an off-machine backup: because a snapshot commit's parents
 // include HEAD, pushing only the poppy refs carries the whole object closure,
@@ -32,8 +32,8 @@ import (
 
 // Config locates the mirrors.
 type Config struct {
-	// Host is the SSH target of the closet server, for example
-	// "devbox.tailnet.ts.net" or "mads@devbox". When empty, Dir is treated as
+	// Host is the SSH target of the mirror server, for example
+	// "devbox.example.ts.net" or "git@devbox". When empty, Dir is treated as
 	// a path on the local machine, which suits a single-box setup and tests.
 	Host string
 	// Dir is the directory holding the bare mirrors, on Host when set.

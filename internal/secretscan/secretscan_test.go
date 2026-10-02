@@ -29,8 +29,8 @@ func TestSecretInUnpushedCommitIsFound(t *testing.T) {
 
 	repo.Git("checkout", "-q", "-b", "feature")
 	repo.Commit("wire up the client", "client.go", "const token = \""+fakeToken()+"\"\n")
-	// The leak is then removed from the working tree, so only the commit —
-	// which no remote has — still holds it.
+	// The leak is then removed from the working tree, so only the commit,
+	// which no remote has, still holds it.
 	repo.Commit("drop the literal", "client.go", "const token = os.Getenv(\"TOKEN\")\n")
 
 	report := secretscan.Repo(context.Background(), repo.Path, secretscan.Options{})
