@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/shell"
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
@@ -79,7 +80,7 @@ func (m *Mirror) Ensure(ctx context.Context) error {
 	}
 
 	remote := fmt.Sprintf("mkdir -p %s && git init --bare --quiet %s",
-		shellQuote(m.cfg.Dir), shellQuote(m.relPath()))
+		shell.Quote(m.cfg.Dir), shell.Quote(m.relPath()))
 	return m.ssh(ctx, remote)
 }
 
@@ -163,12 +164,6 @@ func (m *Mirror) ssh(ctx context.Context, remoteCommand string) error {
 		return fmt.Errorf("ssh %s: %s", m.cfg.Host, msg)
 	}
 	return nil
-}
-
-// shellQuote wraps a path in single quotes for safe interpolation into the
-// remote shell command, escaping any embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // LocalConfigForTest builds a config backed by a local directory. It exists so

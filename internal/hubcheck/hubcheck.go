@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/madelinecameron/poppy/internal/shell"
 )
 
 // DefaultTimeout bounds one whole check. A full --strict fsck of the 136MB
@@ -414,13 +416,7 @@ else
 fi
 
 printf 'end\n'
-`, shellQuote(repo), want, shellQuote(prevBoot), maxDetail, maxDetail, maxDetail)
-}
-
-// shellQuote wraps a value in single quotes for safe interpolation into the
-// script, escaping any embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+`, shell.Quote(repo), want, shell.Quote(prevBoot), maxDetail, maxDetail, maxDetail)
 }
 
 // RepoPathFromRemote extracts the repository's path on its host from a hub
