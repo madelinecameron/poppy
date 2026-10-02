@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/madelinecameron/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/shell"
 )
 
 // Version is the generation of the installed script. Raising it makes existing
@@ -180,7 +181,7 @@ func versionLine() string { return fmt.Sprintf("# %s (v%d)", marker, Version) }
 func script() string {
 	fallback := ""
 	if exe, err := os.Executable(); err == nil {
-		q := shellQuote(exe)
+		q := shell.Quote(exe)
 		fallback = fmt.Sprintf("if [ -z \"$poppy\" ] && [ -x %s ]; then\n\tpoppy=%s\nfi\n", q, q)
 	}
 	return fmt.Sprintf(`#!/bin/sh
@@ -197,9 +198,4 @@ fi
 
 exec "$poppy" secrets --staged
 `, versionLine(), fallback)
-}
-
-// shellQuote renders a path as a single-quoted shell word.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
