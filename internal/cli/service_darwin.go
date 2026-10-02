@@ -69,8 +69,10 @@ func uninstallService() error {
 	}
 	target := "gui/" + strconv.Itoa(os.Getuid())
 	if out, err := exec.Command("launchctl", "bootout", target+"/"+serviceLabel).CombinedOutput(); err != nil {
-		exec.Command("launchctl", "unload", "-w", path).Run()
-		_ = out
+		if uout, uerr := exec.Command("launchctl", "unload", "-w", path).CombinedOutput(); uerr != nil {
+			return fmt.Errorf("launchctl bootout: %s; unload: %s",
+				strings.TrimSpace(string(out)), strings.TrimSpace(string(uout)))
+		}
 	}
 	if err := os.Remove(path); err != nil {
 		return err
