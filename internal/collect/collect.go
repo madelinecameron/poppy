@@ -134,7 +134,8 @@ func brokenReason(path string, err error) string {
 			return "orphaned worktree: " + target + " is missing"
 		}
 	}
-	return firstLine(err.Error())
+	line, _, _ := strings.Cut(err.Error(), "\n")
+	return line
 }
 
 // worktreeGitDir reads the gitdir pointer from a .git file, which a linked
@@ -149,13 +150,6 @@ func worktreeGitDir(path string) (string, bool) {
 		return "", false
 	}
 	return target, true
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // dirtySince preserves the original transition to dirty across scans so the
