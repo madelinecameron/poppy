@@ -23,8 +23,8 @@ const binarySniff = 8000
 // Scan reports every rule match in content, as line numbers and rule
 // identifiers. It returns no part of what it read.
 //
-// path selects which rules apply — the dotenv assignment rule is scoped by
-// filename — and is otherwise unused.
+// path selects which rules apply (the dotenv assignment rule is scoped by
+// filename) and is otherwise unused.
 func Scan(path string, content []byte) []Hit {
 	if IsBinary(content) {
 		return nil

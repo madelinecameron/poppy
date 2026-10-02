@@ -1,14 +1,12 @@
 // Package hubcheck examines the hub repository's files on the host that holds
 // them, rather than asking git about it from somewhere else.
 //
-// On 20 August a host restart mid-push left thirteen zero-length objects in
-// /opt/fleet/poppy-hub.git. Git degraded around them quietly: it warned once
-// about a pack index, ignored the bad pack, and resolved refs anyway. Every
-// git command poppy ran succeeded, so the scan had nothing to report, and the
-// hub received nothing for sixteen days before anyone noticed. Git is the
-// thing that hid it, so the load-bearing check here is a filesystem sweep for
-// zero-length files in the object store; "git fsck --full --strict" is the
-// corroborating second opinion, not the primary signal.
+// A host restart mid-push can leave zero-length objects in a repository.
+// Git works around them quietly: it warns once about a pack index, ignores
+// the bad pack, and resolves refs anyway, so every git command succeeds and
+// a scan built on git has nothing to report. The primary check is therefore
+// a filesystem sweep for zero-length files in the object store;
+// "git fsck --full --strict" is a second opinion.
 //
 // Both checks run as one POSIX shell script, executed either on this machine
 // or over ssh on the hub host. One script means the remote path and the local
@@ -28,8 +26,8 @@ import (
 	"github.com/madelinecameron/poppy/internal/shell"
 )
 
-// DefaultTimeout bounds one whole check. A full --strict fsck of the 136MB
-// fleet hub measured 16.5s, so the bound is generous enough that a slow run is
+// DefaultTimeout bounds one whole check. A full --strict fsck of a 136MB
+// hub measured 16.5s, so the bound is generous enough that a slow run is
 // reported as what it found rather than as a timeout.
 const DefaultTimeout = 2 * time.Minute
 
@@ -46,9 +44,9 @@ const maxDetail = 200
 // Status is one check's outcome.
 //
 // It is deliberately not a boolean. A boolean has two states and this has
-// three, and the third — "this check did not run" — is the one the incident
-// turned on: a scan that never looked reported exactly what a scan that looked
-// and found nothing reported.
+// three, and the third, "this check did not run", is the one that matters:
+// as a boolean, a scan that never looked would report exactly what a scan
+// that looked and found nothing reports.
 type Status string
 
 const (
@@ -61,7 +59,7 @@ const (
 	StatusClean Status = "clean"
 	// StatusFound means the check ran and found corruption.
 	StatusFound Status = "found"
-	// StatusFailed means the check tried to run and could not — the host was
+	// StatusFailed means the check tried to run and could not: the host was
 	// unreachable, the path was not a repository, git was missing.
 	StatusFailed Status = "failed"
 	// StatusSkipped means the check was deliberately not run this cycle,
@@ -104,7 +102,7 @@ type Result struct {
 	// which repository on which machine a verdict is about.
 	Repo string `json:"repo,omitempty"`
 	Host string `json:"host,omitempty"`
-	// CheckedAt is when the attempt was made — not when it succeeded. An
+	// CheckedAt is when the attempt was made, not when it succeeded. An
 	// attempt that failed still records the time, because "last tried at" is
 	// what says whether anything is happening at all.
 	CheckedAt time.Time `json:"checkedAt"`
@@ -139,10 +137,10 @@ func NotRun(status Status, reason string) *Result {
 
 // Verdict is the single word for a Result.
 //
-// It returns StatusClean only when both checks actually ran, which is the
-// whole point: a result is clean because something looked and found nothing,
-// never because nothing looked. A nil Result — a machine whose document
-// predates this check — is StatusUnknown, not health.
+// It returns StatusClean only when both checks actually ran, because a
+// result is clean because something looked and found nothing,
+// never because nothing looked. A nil Result (a machine whose document
+// predates this check) is StatusUnknown, not health.
 func (r *Result) Verdict() Status {
 	if r == nil {
 		return StatusUnknown
@@ -272,7 +270,7 @@ func execReason(host string, err error) string {
 // parse reads the line protocol Script emits.
 //
 // The header and the "end" sentinel are both required. Output that stops in
-// the middle — an ssh connection dropped mid-stream, a killed remote shell —
+// the middle (an ssh connection dropped mid-stream, a killed remote shell)
 // otherwise arrives as a short but well-formed report, and a report that ends
 // early after a clean sweep line would read as a clean hub. Refusing anything
 // without its sentinel is what makes a truncated answer an absent one.
@@ -329,7 +327,7 @@ func parse(r *Result, out string) {
 // It is a script rather than a sequence of commands because the hub host is
 // reached over ssh, and one round trip that returns everything is the only
 // shape in which "the connection died halfway" is distinguishable from "the
-// repository is fine" — see parse.
+// repository is fine". See parse.
 func Script(repo string, fsck bool, prevBoot string) string {
 	want := "0"
 	if fsck {
@@ -417,7 +415,7 @@ printf 'end\n'
 // remote URL, so the check examines the same repository poppy publishes to
 // without a second setting to keep in step.
 //
-// It understands the ssh:// form the fleet contract uses, the scp-style
+// It understands ssh:// URLs, the scp-style
 // host:path form git also accepts, and a plain local path.
 func RepoPathFromRemote(remote string) string {
 	remote = strings.TrimSpace(remote)

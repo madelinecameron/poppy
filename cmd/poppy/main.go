@@ -9,11 +9,9 @@ import (
 	"github.com/madelinecameron/poppy/internal/cli"
 )
 
-// Version and version are both stamped by the closet publisher, which passes
-// -ldflags "-X main.Version=$v -X main.version=$v". Go silently discards an -X
-// for a symbol that does not exist, so before these were declared the stamp was
-// dropped and every published build called itself "dev". Both spellings are
-// declared because the publisher sets both.
+// Version and version are set at build time with
+// -ldflags "-X main.Version=$v -X main.version=$v". Go silently ignores an -X
+// for a symbol that does not exist, so both spellings are declared.
 var (
 	Version string
 	version string

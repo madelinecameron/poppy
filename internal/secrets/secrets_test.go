@@ -18,8 +18,8 @@ func openAIKey() string    { return "sk-" + strings.Repeat("Kq3mZp8v", 6) }
 func slackToken() string   { return "xoxb-" + "2183746501-9182736450-" + strings.Repeat("Ab3d", 6) }
 
 // TestFindingCannotCarryTheMatchedValue is the structural half of the
-// guarantee poppy's state documents rest on. The prose half — that matching
-// happens against bytes that never leave this package — is only credible
+// guarantee poppy's state documents rest on. The prose half (that matching
+// happens against bytes that never leave this package) is only credible
 // because there is nowhere for those bytes to go.
 func TestFindingCannotCarryTheMatchedValue(t *testing.T) {
 	for _, f := range reflect.VisibleFields(reflect.TypeFor[Finding]()) {
