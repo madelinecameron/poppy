@@ -3,6 +3,7 @@ package collect
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -281,7 +282,10 @@ func (c *Collector) lastCommit(ctx context.Context, g *gitx.Runner) (*model.Comm
 	// git log appends a newline after the format, which lands on the final
 	// NUL-delimited field. Left in place it makes the timestamp fail to parse,
 	// silently zeroing every commit date.
-	when, _ := time.Parse(time.RFC3339, strings.TrimSpace(fields[3]))
+	when, err := time.Parse(time.RFC3339, strings.TrimSpace(fields[3]))
+	if err != nil {
+		return nil, fmt.Errorf("commit time: %w", err)
+	}
 	return &model.Commit{
 		SHA:     fields[0],
 		Subject: fields[1],
