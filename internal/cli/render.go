@@ -112,10 +112,7 @@ func relTime(t time.Time, now time.Time) string {
 	if t.IsZero() {
 		return "never"
 	}
-	d := now.Sub(t)
-	if d < 0 {
-		d = 0
-	}
+	d := max(now.Sub(t), 0)
 	switch {
 	case d < time.Minute:
 		return "just now"

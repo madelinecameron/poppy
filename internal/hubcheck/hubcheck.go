@@ -281,7 +281,7 @@ func parse(r *Result, out string) {
 		sawHeader bool
 		sawEnd    bool
 	)
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		key, value, _ := strings.Cut(strings.TrimRight(line, "\r"), " ")
 		switch key {
 		case "poppy-hubcheck":
