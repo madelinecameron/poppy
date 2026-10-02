@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,5 +141,15 @@ func TestAnEmptyFleetSaysNothingRatherThanSayingClean(t *testing.T) {
 	}
 	if len(h.Reports) != 0 {
 		t.Errorf("reports = %d, want none", len(h.Reports))
+	}
+}
+
+func TestAHubNobodyCheckedHasNoLastRan(t *testing.T) {
+	data, err := json.Marshal(Fleet{Machines: []MachineState{machine("a", nil)}}.HubIntegrity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "lastRan") {
+		t.Errorf("lastRan present with no check run: %s", data)
 	}
 }
