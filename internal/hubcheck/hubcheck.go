@@ -262,17 +262,11 @@ func execReason(host string, err error) string {
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
 		if msg := strings.TrimSpace(string(exit.Stderr)); msg != "" {
-			return fmt.Sprintf("could not run the check %s: %s", where, firstLine(msg))
+			line, _, _ := strings.Cut(msg, "\n")
+			return fmt.Sprintf("could not run the check %s: %s", where, line)
 		}
 	}
 	return fmt.Sprintf("could not run the check %s: %v", where, err)
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // parse reads the line protocol Script emits.

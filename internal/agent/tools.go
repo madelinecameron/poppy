@@ -122,16 +122,10 @@ func probeVersion(ctx context.Context, path string) string {
 		if strings.Contains(text, "unknown command") || strings.Contains(text, "Usage of") {
 			continue
 		}
-		if v := versionToken.FindString(firstLine(text)); v != "" {
+		line, _, _ := strings.Cut(text, "\n")
+		if v := versionToken.FindString(line); v != "" {
 			return v
 		}
 	}
 	return ""
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
