@@ -239,7 +239,7 @@ type HubIntegrity struct {
 	Verdict hubcheck.Status `json:"verdict"`
 	// LastRan is the most recent check that actually examined the repository,
 	// and Ran counts how many machines managed it this cycle.
-	LastRan time.Time `json:"lastRan,omitempty"`
+	LastRan time.Time `json:"lastRan,omitzero"`
 	Ran     int       `json:"ran"`
 	// Silent counts machines that should be checking and are not — a failed
 	// ssh, a skipped fsck, a document with no check in it. This number is the
