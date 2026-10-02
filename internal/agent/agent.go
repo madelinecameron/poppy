@@ -241,24 +241,18 @@ func (a *Agent) collectAll(ctx context.Context, found []scan.Found, prev map[str
 		prevByPath[r.Path] = r
 	}
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, collectWorkers)
+	workers := newPool(collectWorkers)
 
 	for i, f := range found {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		workers.Go(func() {
 			var previous *model.Repo
 			if p, ok := prevByPath[f.Path]; ok {
 				previous = &p
 			}
 			results[i] = c.Repo(ctx, f.Path, f.IsWorktree, previous)
-		}()
+		})
 	}
-	wg.Wait()
+	workers.Wait()
 
 	out := results[:0]
 	for _, r := range results {
@@ -292,8 +286,7 @@ func (a *Agent) scanSecrets(ctx context.Context, repos []model.Repo, prev map[st
 	interval := a.Config.Secrets.Interval()
 	now := time.Now()
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, collectWorkers)
+	workers := newPool(collectWorkers)
 
 	for i := range repos {
 		r := &repos[i]
@@ -306,21 +299,16 @@ func (a *Agent) scanSecrets(ctx context.Context, repos []model.Repo, prev map[st
 			continue
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		workers.Go(func() {
 			report := secretscan.Repo(ctx, r.Path, opts)
 			report.Fingerprint = fingerprint
 			if report.Error != "" {
 				a.Log.Warn("secret scan degraded", "repo", r.Name, "err", report.Error)
 			}
 			r.Secrets = &report
-		}()
+		})
 	}
-	wg.Wait()
+	workers.Wait()
 }
 
 // reusable reports whether a previous scan still describes the repository.
@@ -343,22 +331,14 @@ func (a *Agent) capture(ctx context.Context, repos []model.Repo) (taken, pruned 
 	policy := a.Config.Snapshot.Policy()
 	now := time.Now()
 
-	var (
-		mu sync.Mutex
-		wg sync.WaitGroup
-	)
-	sem := make(chan struct{}, collectWorkers)
+	var mu sync.Mutex
+	workers := newPool(collectWorkers)
 
 	for _, r := range repos {
 		if r.Broken || a.Config.Snapshot.ExcludesRepo(r.Path) {
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		workers.Go(func() {
 			if r.Dirty.Any() {
 				switch snap, err := s.Create(ctx, r.Path); {
 				case err == nil:
@@ -384,9 +364,9 @@ func (a *Agent) capture(ctx context.Context, repos []model.Repo) (taken, pruned 
 			mu.Lock()
 			pruned += n
 			mu.Unlock()
-		}()
+		})
 	}
-	wg.Wait()
+	workers.Wait()
 	return taken, pruned
 }
 
@@ -417,22 +397,16 @@ func (a *Agent) sync(ctx context.Context, repos []model.Repo) int {
 
 	var (
 		mu     sync.Mutex
-		wg     sync.WaitGroup
 		synced int
 	)
-	sem := make(chan struct{}, collectWorkers)
+	workers := newPool(collectWorkers)
 
 	for i := range repos {
 		r := &repos[i]
 		if r.Snapshot == nil || a.Config.Snapshot.ExcludesRepo(r.Path) {
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		workers.Go(func() {
 			if err := mirror.For(mirrorCfg, r.RepoID).Push(ctx, r.Path, a.Config.Machine); err != nil {
 				a.Log.Warn("snapshot sync failed", "repo", r.Name, "err", err)
 				return
@@ -441,9 +415,9 @@ func (a *Agent) sync(ctx context.Context, repos []model.Repo) int {
 			mu.Lock()
 			synced++
 			mu.Unlock()
-		}()
+		})
 	}
-	wg.Wait()
+	workers.Wait()
 	return synced
 }
 
