@@ -59,7 +59,7 @@ func OpenRead(dir, remote string) *Store {
 }
 
 // Exists reports whether a hub repository is present. A missing hub is not an
-// empty fleet -- it means this machine has never recorded anything -- and a
+// empty fleet: it means this machine has never recorded anything, and a
 // reader should say so rather than report a confident zero.
 func (s *Store) Exists() bool {
 	_, err := os.Stat(filepath.Join(s.Dir, ".git"))

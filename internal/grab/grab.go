@@ -2,7 +2,7 @@
 //
 // The source machine's agent has already captured the work as a snapshot and
 // pushed it to the project's mirror. Grab fetches that snapshot and applies it,
-// reproducing the source's exact working state — its committed HEAD plus the
+// reproducing the source's exact working state: its committed HEAD plus the
 // staged, unstaged, and untracked changes on top. Nothing is merged silently:
 // a destination that has diverged from the snapshot's base is refused with an
 // explanation rather than resolved by guesswork.

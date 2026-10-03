@@ -24,7 +24,7 @@ func scratchHub(t *testing.T) string {
 }
 
 // looseObject returns a path under objects/<xx>/, and only from there: the
-// files git also keeps under objects/ — a commit-graph, a pack — are not
+// files git also keeps under objects/ (a commit-graph, a pack) are not
 // objects, and emptying one of those would test something else.
 func looseObject(t *testing.T, repo string) string {
 	t.Helper()
@@ -70,10 +70,9 @@ func TestACleanHubReportsThatBothChecksLooked(t *testing.T) {
 	}
 }
 
-// This is the incident, reduced. Zero-length files sat in the pack directory
-// and git carried on: fsck passed, refs resolved, every git command succeeded.
+// Zero-length files sit in the pack directory and git carries on: fsck passed, refs resolved, every git command succeeded.
 // Only something looking at the files on disk can see them, which is why the
-// sweep and not the fsck is the check that carries this ticket.
+// sweep and not the fsck is the check that catches it.
 func TestTheSweepSeesCorruptionGitReportsNothingAbout(t *testing.T) {
 	repo := scratchHub(t)
 	packDir := filepath.Join(repo, "objects", "pack")
@@ -168,7 +167,7 @@ func TestAPathThatIsNotARepositoryFailsTheFsck(t *testing.T) {
 }
 
 // A check that did not run must never present as a check that ran and found
-// nothing. This is the requirement the whole ticket rests on, so it is asserted
+// nothing. It is the central requirement of this package, so it is asserted
 // against every status that means absence rather than against one of them.
 func TestACheckThatDidNotRunIsNeverClean(t *testing.T) {
 	for _, absent := range []Status{StatusUnknown, StatusFailed, StatusSkipped, StatusNotConfigured} {

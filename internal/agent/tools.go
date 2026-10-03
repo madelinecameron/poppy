@@ -18,10 +18,8 @@ import (
 // installedTools reports every fleet tool present on this machine, not only the
 // ones that run as daemons.
 //
-// This is the installed half of what `houseparty fleet` compares against the
-// toolchain contract. Reporting only daemons meant a non-daemon tool -- most of
-// them -- could never be anything but "missing" in that diff, however current it
-// actually was.
+// A tool that is not a daemon is still installed, and a version comparison
+// against the contract needs to see it.
 //
 // The contract itself supplies the list, so a tool added to workplace-protocols.yaml is
 // picked up without touching poppy. Names are looked up beside poppy's own
@@ -103,9 +101,8 @@ func executable(path string) bool {
 // versionToken matches the first vX.Y.Z-ish token in a tool's output.
 var versionToken = regexp.MustCompile(`v?\d+\.\d+\.\d+[0-9A-Za-z.+-]*`)
 
-// probeVersion asks a tool what version it is. The fleet has no single
-// convention -- poppy answers `version`, houseparty answers `--version`, and
-// toolbox answers neither -- so both are tried and a tool that reports nothing
+// probeVersion asks a tool what version it is. Tools differ: some
+// answer `version`, some `--version`, some neither. Both are tried and a tool that reports nothing
 // is recorded as installed with an unknown version rather than omitted. Missing
 // and present-but-unversioned are different facts and the contract diff should
 // be able to tell them apart.
@@ -122,16 +119,10 @@ func probeVersion(ctx context.Context, path string) string {
 		if strings.Contains(text, "unknown command") || strings.Contains(text, "Usage of") {
 			continue
 		}
-		if v := versionToken.FindString(firstLine(text)); v != "" {
+		line, _, _ := strings.Cut(text, "\n")
+		if v := versionToken.FindString(line); v != "" {
 			return v
 		}
 	}
 	return ""
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }

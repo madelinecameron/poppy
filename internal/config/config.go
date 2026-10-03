@@ -34,7 +34,7 @@ type Config struct {
 	MaxDepth int `json:"maxDepth,omitempty"`
 	// IncludeWorktrees reports linked worktrees as their own entries.
 	IncludeWorktrees bool `json:"includeWorktrees"`
-	// WorkplaceProtocolsRoles are the protocol roles this machine plays (e.g. "closet",
+	// WorkplaceProtocolsRoles are the protocol roles this machine plays (e.g.
 	// "hub-host", "registry-host"), published in the machine's manifest so the
 	// fleet is discoverable without a coordinator.
 	WorkplaceProtocolsRoles []string `json:"workplaceProtocolsRoles,omitempty"`
@@ -139,7 +139,7 @@ type Snapshot struct {
 type Mirror struct {
 	// Enabled turns off-machine sync on.
 	Enabled bool `json:"enabled"`
-	// Host is the SSH target of the closet server. Empty means Dir is a path
+	// Host is the SSH target of the mirror server. Empty means Dir is a path
 	// on the local machine, for a single-box setup.
 	Host string `json:"host,omitempty"`
 	// Dir holds the bare per-repository mirrors, on Host when set.

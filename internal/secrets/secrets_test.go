@@ -18,11 +18,11 @@ func openAIKey() string    { return "sk-" + strings.Repeat("Kq3mZp8v", 6) }
 func slackToken() string   { return "xoxb-" + "2183746501-9182736450-" + strings.Repeat("Ab3d", 6) }
 
 // TestFindingCannotCarryTheMatchedValue is the structural half of the
-// guarantee poppy's state documents rest on. The prose half — that matching
-// happens against bytes that never leave this package — is only credible
+// guarantee poppy's state documents rest on. The prose half (that matching
+// happens against bytes that never leave this package) is only credible
 // because there is nowhere for those bytes to go.
 func TestFindingCannotCarryTheMatchedValue(t *testing.T) {
-	for _, f := range reflect.VisibleFields(reflect.TypeOf(Finding{})) {
+	for _, f := range reflect.VisibleFields(reflect.TypeFor[Finding]()) {
 		if f.IsExported() {
 			t.Errorf("Finding.%s is exported, so a caller could assign a matched value to it", f.Name)
 		}
@@ -32,7 +32,7 @@ func TestFindingCannotCarryTheMatchedValue(t *testing.T) {
 	// ever grows a field that could hold content, the guarantee is gone.
 	want := []string{"Rule", "Line"}
 	var got []string
-	for _, f := range reflect.VisibleFields(reflect.TypeOf(Hit{})) {
+	for _, f := range reflect.VisibleFields(reflect.TypeFor[Hit]()) {
 		got = append(got, f.Name)
 	}
 	if !slices.Equal(got, want) {
