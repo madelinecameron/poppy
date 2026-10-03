@@ -1,8 +1,8 @@
-// Package mirror keeps each repository's snapshots on a bare repository on the
-// closet server, one per project.
+// Package mirror keeps each repository's snapshots on a bare repository on an
+// always-on server, one per project.
 //
 // A per-repository mirror means the first push of a project transfers its
-// history once and later pushes send only deltas — unlike a single shared hub,
+// history once and later pushes send only deltas, unlike a single shared hub,
 // which would hold none of the base objects and re-transfer everything. The
 // mirror doubles as an off-machine backup: because a snapshot commit's parents
 // include HEAD, pushing only the poppy refs carries the whole object closure,
@@ -26,13 +26,14 @@ import (
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/gitx"
+	"github.com/madelinecameron/poppy/internal/shell"
 	"github.com/madelinecameron/poppy/internal/snapshot"
 )
 
 // Config locates the mirrors.
 type Config struct {
-	// Host is the SSH target of the closet server, for example
-	// "devbox.tailnet.ts.net" or "mads@devbox". When empty, Dir is treated as
+	// Host is the SSH target of the mirror server, for example
+	// "devbox.example.ts.net" or "git@devbox". When empty, Dir is treated as
 	// a path on the local machine, which suits a single-box setup and tests.
 	Host string
 	// Dir is the directory holding the bare mirrors, on Host when set.
@@ -79,7 +80,7 @@ func (m *Mirror) Ensure(ctx context.Context) error {
 	}
 
 	remote := fmt.Sprintf("mkdir -p %s && git init --bare --quiet %s",
-		shellQuote(m.cfg.Dir), shellQuote(m.relPath()))
+		shell.Quote(m.cfg.Dir), shell.Quote(m.relPath()))
 	return m.ssh(ctx, remote)
 }
 
@@ -163,12 +164,6 @@ func (m *Mirror) ssh(ctx context.Context, remoteCommand string) error {
 		return fmt.Errorf("ssh %s: %s", m.cfg.Host, msg)
 	}
 	return nil
-}
-
-// shellQuote wraps a path in single quotes for safe interpolation into the
-// remote shell command, escaping any embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // LocalConfigForTest builds a config backed by a local directory. It exists so

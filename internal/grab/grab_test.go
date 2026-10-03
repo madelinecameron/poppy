@@ -52,7 +52,7 @@ func twoMachines(t *testing.T) (cfg config.Config, fleet model.Fleet, source, de
 	source.Commit("shared history", "app.go", "package main\n")
 
 	// laptop: a genuine clone of the same project, so it holds the identical
-	// base commit — as any two checkouts of one repository would.
+	// base commit, as any two checkouts of one repository would.
 	destDir := filepath.Join(t.TempDir(), "laptop-checkout")
 	if out, err := runGit(t.TempDir(), "clone", "--quiet", source.Path, destDir); err != nil {
 		t.Fatalf("clone: %v: %s", err, out)

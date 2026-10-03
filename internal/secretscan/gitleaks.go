@@ -32,7 +32,7 @@ type gitleaksFinding struct {
 //
 // It covers the working tree only. The stash and unpushed-commit walks stay on
 // the built-in rules, because feeding gitleaks the contents of an arbitrary
-// object would mean writing that content somewhere it can read — which is
+// object would mean writing that content somewhere it can read, which is
 // precisely the thing this feature must not do.
 func (s *scanner) gitleaks(ctx context.Context) error {
 	if _, err := exec.LookPath("gitleaks"); err != nil {

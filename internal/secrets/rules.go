@@ -113,8 +113,8 @@ func Rules() []RuleID {
 // development secret under a name like SESSION_SECRET is indistinguishable
 // from a leak by shape alone, and it is the single most common thing a dotenv
 // rule gets wrong; the filename is the author saying which it is. The
-// self-identifying rules — a private key block, an AWS key id, a live Stripe
-// key — still apply to those files, so naming a file .example excuses a
+// self-identifying rules (a private key block, an AWS key id, a live Stripe
+// key) still apply to those files, so naming a file .example excuses a
 // placeholder and never excuses a real credential.
 func envShaped(p string) bool {
 	base := path.Base(p)

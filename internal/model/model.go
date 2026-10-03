@@ -90,7 +90,7 @@ type Repo struct {
 	// Broken marks a directory that looks like a working tree but cannot be
 	// read as one, most often an orphaned worktree whose administrative
 	// directory is gone. Its contents are invisible to git, so any work left
-	// there is stranded in the strongest sense.
+	// there is easy to lose without anyone noticing.
 	Broken bool   `json:"broken,omitempty"`
 	Error  string `json:"error,omitempty"`
 }
@@ -239,9 +239,9 @@ type HubIntegrity struct {
 	Verdict hubcheck.Status `json:"verdict"`
 	// LastRan is the most recent check that actually examined the repository,
 	// and Ran counts how many machines managed it this cycle.
-	LastRan time.Time `json:"lastRan,omitempty"`
+	LastRan time.Time `json:"lastRan,omitzero"`
 	Ran     int       `json:"ran"`
-	// Silent counts machines that should be checking and are not — a failed
+	// Silent counts machines that should be checking and are not: a failed
 	// ssh, a skipped fsck, a document with no check in it. This number is the
 	// answer to "is a clean report a real one", so it is reported next to the
 	// verdict and never folded into it.
@@ -282,7 +282,7 @@ func (f Fleet) HubIntegrity() HubIntegrity {
 				worstAbsence = verdict
 			}
 		}
-		// A check that ran at all — clean or not — dates the fleet's answer.
+		// A check that ran at all, clean or not, dates the fleet's answer.
 		if verdict.Ran() && m.Manifest.Hub.CheckedAt.After(h.LastRan) {
 			h.LastRan = m.Manifest.Hub.CheckedAt
 		}

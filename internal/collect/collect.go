@@ -3,6 +3,7 @@ package collect
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -133,7 +134,8 @@ func brokenReason(path string, err error) string {
 			return "orphaned worktree: " + target + " is missing"
 		}
 	}
-	return firstLine(err.Error())
+	line, _, _ := strings.Cut(err.Error(), "\n")
+	return line
 }
 
 // worktreeGitDir reads the gitdir pointer from a .git file, which a linked
@@ -148,13 +150,6 @@ func worktreeGitDir(path string) (string, bool) {
 		return "", false
 	}
 	return target, true
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // dirtySince preserves the original transition to dirty across scans so the
@@ -281,7 +276,10 @@ func (c *Collector) lastCommit(ctx context.Context, g *gitx.Runner) (*model.Comm
 	// git log appends a newline after the format, which lands on the final
 	// NUL-delimited field. Left in place it makes the timestamp fail to parse,
 	// silently zeroing every commit date.
-	when, _ := time.Parse(time.RFC3339, strings.TrimSpace(fields[3]))
+	when, err := time.Parse(time.RFC3339, strings.TrimSpace(fields[3]))
+	if err != nil {
+		return nil, fmt.Errorf("commit time: %w", err)
+	}
 	return &model.Commit{
 		SHA:     fields[0],
 		Subject: fields[1],

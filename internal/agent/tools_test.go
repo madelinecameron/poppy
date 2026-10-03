@@ -9,8 +9,8 @@ import (
 )
 
 // writeTool drops a fake fleet binary that answers one version convention, so
-// the probe is exercised against both the poppy style (`version`) and the
-// houseparty style (`--version`), plus a tool that answers neither.
+// the probe is exercised against both the `version` and `--version`
+// styles, plus a tool that answers neither.
 func writeTool(t *testing.T, dir, name, arg, out string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
