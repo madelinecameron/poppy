@@ -51,6 +51,20 @@ A snapshot carries the history it is based on, so a machine that has never
 cloned the project can still recover the work. Leave `host` empty to mirror to
 a local directory.
 
+The mirror account does not need a shell. Besides git, poppy runs one command
+there, `poppy-mirror-init PATH`, to create a mirror the first time. Give the
+account `git-shell` as its login shell and install the commands from
+`deploy/git-shell-commands` in its `~/git-shell-commands`. The mirrors then live
+in `~/poppy-mirrors`, so `dir` must be that path:
+
+```sh
+sudo install -d -o fleet ~fleet/git-shell-commands
+sudo install -o fleet -m 0755 deploy/git-shell-commands/* ~fleet/git-shell-commands/
+```
+
+The hub check needs a real shell, so with a git-shell mirror account set
+`hubCheck.host` to an account that has one.
+
 ## Grab
 
 Grab moves uncommitted work from another machine onto this one:

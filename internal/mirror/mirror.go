@@ -67,6 +67,13 @@ func (m *Mirror) url() string {
 	return m.cfg.Host + ":" + m.relPath()
 }
 
+// InitCommand is the one command Ensure runs on the mirror host. It must
+// create the bare repository at its single path argument, and succeed if the
+// repository already exists. Installing it in the mirror account's
+// ~/git-shell-commands lets that account keep git-shell as its login shell:
+// every other mirror operation is a plain git push or fetch.
+const InitCommand = "poppy-mirror-init"
+
 // Ensure creates the bare mirror when it does not yet exist. git init on an
 // existing bare repository is harmless, so concurrent creation by two machines
 // is safe.
@@ -78,10 +85,7 @@ func (m *Mirror) Ensure(ctx context.Context) error {
 		_, err := gitx.New(m.relPath()).Run(ctx, "init", "--bare", "--quiet", ".")
 		return err
 	}
-
-	remote := fmt.Sprintf("mkdir -p %s && git init --bare --quiet %s",
-		shell.Quote(m.cfg.Dir), shell.Quote(m.relPath()))
-	return m.ssh(ctx, remote)
+	return m.ssh(ctx, InitCommand+" "+shell.Quote(m.relPath()))
 }
 
 // machineRefspecs are the wip and snap namespaces for one machine. A refspec
