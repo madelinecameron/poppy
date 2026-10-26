@@ -1,0 +1,19 @@
+#!/bin/sh
+# poppy-mirror-init PATH: create a bare snapshot mirror for poppy.
+#
+# Install in ~/git-shell-commands of the account that holds the mirrors. It is
+# the only command besides git that poppy runs there, so that account can keep
+# git-shell as its login shell. PATH must name a .git directory under
+# ~/poppy-mirrors.
+set -eu
+
+[ "$#" -eq 1 ] || { echo "usage: poppy-mirror-init PATH" >&2; exit 2; }
+root="$HOME/poppy-mirrors"
+case "$1" in
+  *..*) echo "poppy-mirror-init: refusing a path with ..: $1" >&2; exit 1 ;;
+  "$root"/*.git) ;;
+  *) echo "poppy-mirror-init: $1 is not under $root" >&2; exit 1 ;;
+esac
+
+mkdir -p "$1"
+git init --bare --quiet "$1"

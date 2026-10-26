@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "This account only serves git." >&2
+exit 128
