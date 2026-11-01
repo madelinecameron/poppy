@@ -50,6 +50,7 @@ func sampleFleet(now time.Time) model.Fleet {
 		},
 		{
 			Manifest: model.Manifest{Machine: "laptop", OS: "darwin", Arch: "arm64", Heartbeat: now.Add(-90 * time.Minute)},
+			Sessions: sampleSessions(now),
 			Repos: []model.Repo{
 				{
 					RepoID: "p3", Name: "notes", Machine: "laptop", Path: "/Users/mads/code/notes",
@@ -164,7 +165,7 @@ func TestToolsListReturnsEverySchema(t *testing.T) {
 	want := map[string]bool{
 		"fleet_status": true, "dirty_trees": true, "find_work": true,
 		"repo_state": true, "snapshot_history": true, "secret_findings": true,
-		"where_was_i": true,
+		"where_was_i": true, "sessions": true,
 	}
 	if len(res.Tools) != len(want) {
 		t.Errorf("listed %d tools, want %d", len(res.Tools), len(want))
@@ -484,6 +485,99 @@ func TestSecretFindingsNeverCarryValues(t *testing.T) {
 			if strings.Contains(text, `"`+banned+`"`) {
 				t.Errorf("%s emitted a %q field: %s", tool, banned, text)
 			}
+		}
+	}
+}
+
+func sampleSessions(now time.Time) []model.Session {
+	return []model.Session{
+		{
+			Machine: "laptop", Harness: "claude", SessionID: "live", Mailbox: "k1.live",
+			TranscriptPath: "/Users/mads/.claude/projects/p/live.jsonl",
+			FirstSeen:      now.Add(-2 * time.Hour), LastSeen: now.Add(-4 * time.Minute),
+			Repos: []model.SessionRepo{
+				{Path: "/Users/mads/code/poppy", Name: "poppy", RepoID: "p1", Branch: "main", FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
+				{Path: "/Users/mads/code/poppy", Name: "poppy", RepoID: "p1", Branch: "feature/auth", FirstSeen: now.Add(-time.Hour), LastSeen: now.Add(-4 * time.Minute)},
+			},
+		},
+		{
+			Machine: "laptop", Harness: "codex", SessionID: "quiet", Mailbox: "k1.quiet",
+			FirstSeen: now.Add(-6 * time.Hour), LastSeen: now.Add(-5 * time.Hour),
+			Repos: []model.SessionRepo{{Path: "/Users/mads/code/notes", Name: "notes", RepoID: "p3", Branch: "main"}},
+		},
+	}
+}
+
+type sessionsResult struct {
+	Count         int `json:"count"`
+	ActiveMinutes int `json:"activeMinutes"`
+	Sessions      []struct {
+		Machine        string `json:"machine"`
+		Harness        string `json:"harness"`
+		SessionID      string `json:"sessionId"`
+		Mailbox        string `json:"mailbox"`
+		Active         bool   `json:"active"`
+		TranscriptPath string `json:"transcriptPath"`
+		Repos          []struct {
+			Repo   string `json:"repo"`
+			RepoID string `json:"repoId"`
+			Branch string `json:"branch"`
+		} `json:"repos"`
+	} `json:"sessions"`
+}
+
+func callSessions(t *testing.T, s *Server, args map[string]any) sessionsResult {
+	t.Helper()
+	var res sessionsResult
+	if err := json.Unmarshal([]byte(callTool(t, s, "sessions", args)), &res); err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+func TestSessionsToolShowsHowToReachEachSession(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+	res := callSessions(t, s, map[string]any{})
+
+	if res.Count != 2 || res.ActiveMinutes != 30 {
+		t.Fatalf("count=%d activeMinutes=%d, want 2 and 30", res.Count, res.ActiveMinutes)
+	}
+	live := res.Sessions[0]
+	if live.SessionID != "live" || live.Machine != "laptop" || live.Harness != "claude" {
+		t.Errorf("first session = %+v, want the most recently seen", live)
+	}
+	if live.Mailbox != "k1.live" || !live.Active || live.TranscriptPath == "" {
+		t.Errorf("live session = %+v", live)
+	}
+	if len(live.Repos) != 2 || live.Repos[1].Branch != "feature/auth" || live.Repos[1].RepoID != "p1" {
+		t.Errorf("repos = %+v", live.Repos)
+	}
+	if res.Sessions[1].Active {
+		t.Error("a session quiet for five hours is reported active")
+	}
+}
+
+func TestSessionsToolFilters(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+	for name, tc := range map[string]struct {
+		args map[string]any
+		want []string
+	}{
+		"repo by name":    {map[string]any{"repo": "poppy"}, []string{"live"}},
+		"repo by id":      {map[string]any{"repo": "p3"}, []string{"quiet"}},
+		"branch":          {map[string]any{"branch": "main"}, []string{"live", "quiet"}},
+		"repo and branch": {map[string]any{"repo": "notes", "branch": "feature/auth"}, nil},
+		"machine":         {map[string]any{"machine": "devbox"}, nil},
+		"active":          {map[string]any{"active": true}, []string{"live"}},
+		"active, wider":   {map[string]any{"active": true, "activeMinutes": 600}, []string{"live", "quiet"}},
+	} {
+		res := callSessions(t, s, tc.args)
+		var got []string
+		for _, sess := range res.Sessions {
+			got = append(got, sess.SessionID)
+		}
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
 		}
 	}
 }

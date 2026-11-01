@@ -2,6 +2,8 @@
 package model
 
 import (
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/hubcheck"
@@ -209,10 +211,12 @@ type Fleet struct {
 	Machines []MachineState
 }
 
-// MachineState pairs a manifest with that machine's repositories.
+// MachineState pairs a manifest with that machine's repositories and harness
+// sessions.
 type MachineState struct {
 	Manifest Manifest
 	Repos    []Repo
+	Sessions []Session
 	Live     bool
 }
 
@@ -309,4 +313,102 @@ func absenceRank(s hubcheck.Status) int {
 	default:
 		return 0
 	}
+}
+
+// Session is one Claude Code or Codex harness session on one machine, and the
+// repositories and branches it has worked in. Stored at
+// machines/<machine>/sessions/<sessionId>.json.
+//
+// It is written first on the machine itself by the harness's hook, then
+// published by the agent, which fills in Machine and each repository's RepoID.
+type Session struct {
+	Schema         int    `json:"schema"`
+	Machine        string `json:"machine,omitempty"`
+	Harness        string `json:"harness"`
+	SessionID      string `json:"sessionId"`
+	TranscriptPath string `json:"transcriptPath,omitempty"`
+	// Mailbox is the address another agent sends mail to in order to reach
+	// this session. It is looked up when the session starts and is empty when
+	// mailbox is not configured or did not answer.
+	Mailbox   string    `json:"mailbox,omitempty"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+	// Ended is set only on an explicit end-of-session event. A Stop event is
+	// not one: Claude Code fires it after every turn. A session that simply
+	// went quiet is told apart by LastSeen.
+	Ended     *time.Time `json:"ended,omitempty"`
+	LastEvent string     `json:"lastEvent,omitempty"`
+	// Repos lists every repository and branch the session has been in, in
+	// the order it arrived there. A branch switch inside one repository is a
+	// new entry, so a branch can name every session that touched it.
+	Repos []SessionRepo `json:"repos,omitempty"`
+}
+
+// SessionRepo is one repository and branch a session has worked in.
+type SessionRepo struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	// RepoID correlates the repository across machines exactly as Repo.RepoID
+	// does. The hook leaves it empty; the agent fills it when publishing.
+	RepoID string `json:"repoId,omitempty"`
+	// Branch is empty when HEAD is detached.
+	Branch    string    `json:"branch,omitempty"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+}
+
+// Active reports whether the session has not ended and was seen within d.
+func (s Session) Active(now time.Time, d time.Duration) bool {
+	return s.Ended == nil && now.Sub(s.LastSeen) <= d
+}
+
+// SessionFilter narrows a fleet's sessions. Empty fields match everything.
+type SessionFilter struct {
+	Machine string
+	// Repo matches a repository's name, case-insensitively, or its RepoID.
+	Repo   string
+	Branch string
+	// ActiveWithin, when positive, keeps only sessions active within it.
+	ActiveWithin time.Duration
+	Now          time.Time
+}
+
+// Matches reports whether a session passes the filter. Repo and Branch must
+// match the same entry, so "sessions on poppy's main" does not return a
+// session that was on main somewhere else and in poppy on another branch.
+func (f SessionFilter) Matches(s Session) bool {
+	if f.Machine != "" && !strings.EqualFold(s.Machine, f.Machine) {
+		return false
+	}
+	if f.ActiveWithin > 0 && !s.Active(f.Now, f.ActiveWithin) {
+		return false
+	}
+	if f.Repo == "" && f.Branch == "" {
+		return true
+	}
+	for _, r := range s.Repos {
+		if f.Repo != "" && !strings.EqualFold(r.Name, f.Repo) && r.RepoID != f.Repo {
+			continue
+		}
+		if f.Branch != "" && r.Branch != f.Branch {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// Sessions returns every session in the fleet that passes the filter, most
+// recently seen first.
+func (f Fleet) Sessions(filter SessionFilter) []Session {
+	var out []Session
+	for _, m := range f.Machines {
+		for _, s := range m.Sessions {
+			if filter.Matches(s) {
+				out = append(out, s)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	return out
 }

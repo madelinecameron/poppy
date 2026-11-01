@@ -111,3 +111,16 @@ func TestHostnameStripsTransientSuffixes(t *testing.T) {
 		}
 	}
 }
+
+func TestMailboxURLPrefersTheEnvironment(t *testing.T) {
+	cfg := Config{Mailbox: Mailbox{URL: "http://from-config:8080"}}
+
+	t.Setenv("MAILBOX_URL", "")
+	if got := cfg.MailboxURL(); got != "http://from-config:8080" {
+		t.Errorf("without MAILBOX_URL: %q, want the configured URL", got)
+	}
+	t.Setenv("MAILBOX_URL", "http://from-env:9090")
+	if got := cfg.MailboxURL(); got != "http://from-env:9090" {
+		t.Errorf("with MAILBOX_URL: %q, want the environment's URL", got)
+	}
+}

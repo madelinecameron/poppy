@@ -112,6 +112,31 @@ func registry() []tool {
 		},
 		{
 			descriptor: toolDescriptor{
+				Name: "sessions",
+				Description: "Claude Code and Codex sessions across the fleet: which machine, which repositories and branches each worked in and when, and the mailbox address that reaches it. " +
+					"Answers 'who else is working on this branch?' and 'which sessions touched this repository?'. Most recently seen first.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"repo":    map[string]any{"type": "string", "description": "Optional repository name or repo id the session worked in."},
+						"branch":  map[string]any{"type": "string", "description": "Optional branch the session worked on. With repo, both must match the same entry."},
+						"machine": map[string]any{"type": "string", "description": "Optional machine to restrict to."},
+						"active": map[string]any{
+							"type":        "boolean",
+							"description": "Only sessions that have not ended and were seen within activeMinutes.",
+						},
+						"activeMinutes": map[string]any{
+							"type":        "integer",
+							"description": "How recently an active session was seen. Default 30.",
+						},
+					},
+				},
+				Annotations: readOnly(),
+			},
+			handle: sessionsTool,
+		},
+		{
+			descriptor: toolDescriptor{
 				Name:        "where_was_i",
 				Description: "A narrative digest of recent activity across the fleet: what was touched, what advanced, and what is still uncommitted. Answers 'what was I working on?'.",
 				InputSchema: map[string]any{
@@ -325,6 +350,79 @@ func secretFindings(ctx context.Context, s *Server, args map[string]any) (string
 		NotScanned: skipped,
 		Note:       "locations only; poppy never records the matched value",
 	})
+}
+
+// defaultActiveMinutes is how recently a session must have been seen to count
+// as active when the caller does not say.
+const defaultActiveMinutes = 30
+
+func sessionsTool(ctx context.Context, s *Server, args map[string]any) (string, error) {
+	minutes := defaultActiveMinutes
+	if v, ok := args["activeMinutes"].(float64); ok && v > 0 {
+		minutes = int(v)
+	}
+	within := time.Duration(minutes) * time.Minute
+	now := time.Now()
+	filter := model.SessionFilter{
+		Machine: argString(args, "machine"),
+		Repo:    argString(args, "repo"),
+		Branch:  argString(args, "branch"),
+		Now:     now,
+	}
+	if active, _ := args["active"].(bool); active {
+		filter.ActiveWithin = within
+	}
+
+	fleet, err := s.fleet(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	type repoView struct {
+		Repo      string    `json:"repo"`
+		RepoID    string    `json:"repoId,omitempty"`
+		Path      string    `json:"path"`
+		Branch    string    `json:"branch,omitempty"`
+		FirstSeen time.Time `json:"firstSeen"`
+		LastSeen  time.Time `json:"lastSeen"`
+	}
+	type sessionView struct {
+		Machine        string     `json:"machine"`
+		Harness        string     `json:"harness"`
+		SessionID      string     `json:"sessionId"`
+		Mailbox        string     `json:"mailbox,omitempty"`
+		Active         bool       `json:"active"`
+		FirstSeen      time.Time  `json:"firstSeen"`
+		LastSeen       time.Time  `json:"lastSeen"`
+		LastSeenAgo    string     `json:"lastSeenAgo"`
+		Ended          *time.Time `json:"ended,omitempty"`
+		TranscriptPath string     `json:"transcriptPath,omitempty"`
+		Repos          []repoView `json:"repos"`
+	}
+	views := []sessionView{}
+	for _, sess := range fleet.Sessions(filter) {
+		v := sessionView{
+			Machine: sess.Machine, Harness: sess.Harness, SessionID: sess.SessionID,
+			Mailbox: sess.Mailbox, Active: sess.Active(now, within),
+			FirstSeen: sess.FirstSeen, LastSeen: sess.LastSeen,
+			LastSeenAgo: relative(now.Sub(sess.LastSeen)),
+			Ended:       sess.Ended, TranscriptPath: sess.TranscriptPath,
+			Repos: []repoView{},
+		}
+		for _, r := range sess.Repos {
+			v.Repos = append(v.Repos, repoView{
+				Repo: r.Name, RepoID: r.RepoID, Path: r.Path, Branch: r.Branch,
+				FirstSeen: r.FirstSeen, LastSeen: r.LastSeen,
+			})
+		}
+		views = append(views, v)
+	}
+
+	return jsonText(struct {
+		Count         int           `json:"count"`
+		ActiveMinutes int           `json:"activeMinutes"`
+		Sessions      []sessionView `json:"sessions"`
+	}{Count: len(views), ActiveMinutes: minutes, Sessions: views})
 }
 
 func findWork(ctx context.Context, s *Server, args map[string]any) (string, error) {
