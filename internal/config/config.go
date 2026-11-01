@@ -51,6 +51,25 @@ type Config struct {
 	Secrets Secrets `json:"secrets"`
 	// HubCheck controls the integrity check of the shared hub repository.
 	HubCheck HubCheck `json:"hubCheck"`
+	// Mailbox is where harness sessions look up the address other agents
+	// reach them at.
+	Mailbox Mailbox `json:"mailbox"`
+}
+
+// Mailbox configures the agent messaging service.
+type Mailbox struct {
+	// URL is the mailbox server's base URL. The MAILBOX_URL environment
+	// variable overrides it. With neither set, sessions are recorded without
+	// a mailbox address.
+	URL string `json:"url,omitempty"`
+}
+
+// MailboxURL resolves the mailbox base URL, preferring the environment.
+func (c Config) MailboxURL() string {
+	if u := os.Getenv("MAILBOX_URL"); u != "" {
+		return u
+	}
+	return c.Mailbox.URL
 }
 
 // HubCheck configures the integrity check of the shared hub repository.

@@ -329,3 +329,94 @@ func TestOpenReadServesFleetFromAnUnwritableHub(t *testing.T) {
 		t.Fatalf("repos = %d, want 1", got)
 	}
 }
+
+func sessionFor(machine, id string) model.Session {
+	now := time.Now().UTC()
+	return model.Session{
+		Schema: model.SchemaVersion, Machine: machine, Harness: "claude", SessionID: id,
+		Mailbox: "key." + id, FirstSeen: now, LastSeen: now,
+		Repos: []model.SessionRepo{{Path: "/code/poppy", Name: "poppy", RepoID: "repo-poppy", Branch: "main", FirstSeen: now, LastSeen: now}},
+	}
+}
+
+func commitCount(t *testing.T, bare string) string {
+	t.Helper()
+	return (&gittest.Repo{T: t, Path: bare}).Git("rev-list", "--count", Branch)
+}
+
+// Sessions published by one machine reach another without disturbing either
+// machine's repositories.
+func TestSessionsConvergeAcrossMachines(t *testing.T) {
+	ctx := context.Background()
+	remote := gittest.NewBare(t, Branch)
+	root := t.TempDir()
+	laptop := openStore(t, filepath.Join(root, "laptop"), remote)
+	devbox := openStore(t, filepath.Join(root, "devbox"), remote)
+
+	if _, err := laptop.Publish(ctx, manifestFor("laptop", 1), []model.Repo{repoFor("laptop", "poppy", 0)}); err != nil {
+		t.Fatal(err)
+	}
+	pushed, err := laptop.PublishSessions(ctx, "laptop", []model.Session{sessionFor("laptop", "s1"), sessionFor("laptop", "s2")})
+	if err != nil || !pushed {
+		t.Fatalf("publish sessions: pushed=%v err=%v", pushed, err)
+	}
+	// A later scan rewrites repos and must leave sessions alone.
+	if _, err := laptop.Publish(ctx, manifestFor("laptop", 1), []model.Repo{repoFor("laptop", "poppy", 1)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := devbox.Pull(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fleet, err := devbox.Fleet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fleet.Machines) != 1 {
+		t.Fatalf("machines = %v", machineNames(fleet))
+	}
+	m := fleet.Machines[0]
+	if len(m.Sessions) != 2 || len(m.Repos) != 1 {
+		t.Fatalf("laptop has %d sessions and %d repos, want 2 and 1", len(m.Sessions), len(m.Repos))
+	}
+	if m.Sessions[0].Mailbox == "" || m.Sessions[0].Repos[0].RepoID != "repo-poppy" {
+		t.Errorf("session = %+v", m.Sessions[0])
+	}
+}
+
+func TestPublishSessionsRemovesPrunedSessions(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "hub"), "")
+
+	s.PublishSessions(ctx, "laptop", []model.Session{sessionFor("laptop", "s1"), sessionFor("laptop", "s2")})
+	s.PublishSessions(ctx, "laptop", []model.Session{sessionFor("laptop", "s2")})
+
+	got := s.ReadSessions("laptop")
+	if len(got) != 1 || got[0].SessionID != "s2" {
+		t.Errorf("sessions = %+v, want only s2", got)
+	}
+}
+
+// The agent calls PublishSessions on a timer; an unchanged set must not put a
+// commit in the hub each time.
+func TestPublishSessionsPushesNothingWhenUnchanged(t *testing.T) {
+	ctx := context.Background()
+	remote := gittest.NewBare(t, Branch)
+	s := openStore(t, filepath.Join(t.TempDir(), "hub"), remote)
+	list := []model.Session{sessionFor("laptop", "s1")}
+
+	if pushed, err := s.PublishSessions(ctx, "laptop", list); err != nil || !pushed {
+		t.Fatalf("first publish: pushed=%v err=%v", pushed, err)
+	}
+	before := commitCount(t, remote)
+	pushed, err := s.PublishSessions(ctx, "laptop", list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pushed {
+		t.Error("an unchanged set was pushed")
+	}
+	if after := commitCount(t, remote); after != before {
+		t.Errorf("hub went from %s to %s commits", before, after)
+	}
+}

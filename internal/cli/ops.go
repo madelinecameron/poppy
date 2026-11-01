@@ -18,6 +18,7 @@ import (
 	"github.com/madelinecameron/poppy/internal/agent"
 	"github.com/madelinecameron/poppy/internal/config"
 	"github.com/madelinecameron/poppy/internal/hubcheck"
+	"github.com/madelinecameron/poppy/internal/sessions"
 	"github.com/madelinecameron/workplace-protocols/discovery"
 	"github.com/madelinecameron/workplace-protocols/tailnet"
 )
@@ -35,6 +36,7 @@ func runScan(ctx context.Context, args []string) error {
 	}
 
 	a := agent.New(cfg, store, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	a.SessionsDir = sessions.Dir()
 	report, err := a.Cycle(ctx)
 	if err != nil {
 		return err
@@ -166,7 +168,9 @@ func runAgentLoop(ctx context.Context, interval time.Duration) error {
 		"interval", time.Duration(cfg.ScanIntervalSeconds)*time.Second,
 		"hub", hubLabel(cfg))
 
-	err = agent.New(cfg, store, log).Run(ctx)
+	a := agent.New(cfg, store, log)
+	a.SessionsDir = sessions.Dir()
+	err = a.Run(ctx)
 	if ctx.Err() != nil {
 		log.Info("poppy daemon stopped")
 		return nil

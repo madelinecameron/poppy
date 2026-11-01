@@ -20,6 +20,7 @@ import (
 
 	"github.com/madelinecameron/poppy/internal/gitx"
 	"github.com/madelinecameron/poppy/internal/model"
+	"github.com/madelinecameron/poppy/internal/sessions"
 )
 
 // Branch is the branch holding state documents.
@@ -166,6 +167,20 @@ func (s *Store) Pull(ctx context.Context) error {
 // whether the state reached the remote; a false return with a nil error means
 // the state is committed locally and will publish on a later cycle.
 func (s *Store) Publish(ctx context.Context, manifest model.Manifest, repos []model.Repo) (pushed bool, err error) {
+	return s.publish(ctx, manifest.Machine, true, func() error { return s.write(manifest, repos) })
+}
+
+// PublishSessions replaces this machine's harness sessions in the hub. It is
+// separate from Publish so a session that starts or changes branch can reach
+// the fleet without waiting for a full scan. Nothing is pushed when the
+// sessions are unchanged, which is the usual case for a scheduled call.
+func (s *Store) PublishSessions(ctx context.Context, machine string, records []model.Session) (pushed bool, err error) {
+	return s.publish(ctx, machine, false, func() error { return s.writeSessions(machine, records) })
+}
+
+// publish runs one write-commit-push cycle on this machine's directory. With
+// always false, a write that changes nothing pushes nothing.
+func (s *Store) publish(ctx context.Context, machine string, always bool, write func() error) (bool, error) {
 	var lastErr error
 	for range PushRetries {
 		// Adopt the remote's history before writing so a push race resolves
@@ -173,13 +188,17 @@ func (s *Store) Publish(ctx context.Context, manifest model.Manifest, repos []mo
 		if err := s.Pull(ctx); err != nil {
 			lastErr = err
 		}
-		if err := s.write(manifest, repos); err != nil {
+		if err := write(); err != nil {
 			return false, err
 		}
-		if _, err := s.commit(ctx, manifest.Machine); err != nil {
+		changed, err := s.commit(ctx, machine)
+		if err != nil {
 			return false, err
 		}
 		if s.Remote == "" {
+			return false, nil
+		}
+		if !changed && !always && lastErr == nil {
 			return false, nil
 		}
 		if _, err := s.git.Run(ctx, "push", "--quiet", "origin", Branch); err == nil {
@@ -189,6 +208,53 @@ func (s *Store) Publish(ctx context.Context, manifest model.Manifest, repos []mo
 		}
 	}
 	return false, lastErr
+}
+
+// writeSessions replaces this machine's sessions directory, so a session
+// pruned locally disappears from the fleet view too.
+func (s *Store) writeSessions(machine string, records []model.Session) error {
+	dir := filepath.Join(s.machineDir(machine), "sessions")
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for _, sess := range records {
+		if err := writeJSON(filepath.Join(dir, sessions.FileName(sess.SessionID)), sess); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReadSessions returns a machine's published harness sessions.
+func (s *Store) ReadSessions(machine string) []model.Session {
+	dir := filepath.Join(s.machineDir(machine), "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []model.Session
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		var sess model.Session
+		if data, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+			if json.Unmarshal(data, &sess) == nil && sess.SessionID != "" {
+				if sess.Machine == "" {
+					sess.Machine = machine
+				}
+				out = append(out, sess)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	return out
 }
 
 // write replaces this machine's directory with the current scan. The
@@ -259,6 +325,7 @@ func (s *Store) Fleet() (model.Fleet, error) {
 			ms.Repos = append(ms.Repos, r)
 		}
 		sort.Slice(ms.Repos, func(i, j int) bool { return ms.Repos[i].Path < ms.Repos[j].Path })
+		ms.Sessions = s.ReadSessions(e.Name())
 		fleet.Machines = append(fleet.Machines, ms)
 	}
 	sort.Slice(fleet.Machines, func(i, j int) bool {

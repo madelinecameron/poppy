@@ -61,6 +61,14 @@ type Agent struct {
 	Config config.Config
 	Store  *hub.Store
 	Log    *slog.Logger
+	// SessionsDir is the local store harness hooks write session records to.
+	// Empty publishes no sessions.
+	SessionsDir string
+
+	// sessionsSeen is the hook marker's time at the last session publish.
+	sessionsSeen time.Time
+	// repoIDs remembers the RepoID of session paths outside the scan roots.
+	repoIDs map[string]string
 }
 
 // Report summarizes one cycle.
@@ -71,6 +79,8 @@ type Report struct {
 	Snapshots int
 	Pruned    int
 	Synced    int
+	// Sessions counts the harness sessions published.
+	Sessions int
 	// Secrets counts repositories holding at least one credential finding, and
 	// Findings the findings themselves.
 	Secrets  int
@@ -146,12 +156,17 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	}
 
 	pushed, pubErr := a.Store.Publish(ctx, manifest, repos)
+	sessionCount, sessErr := a.publishSessions(ctx, repos)
+	if sessErr != nil {
+		a.Log.Warn("session publish failed", "err", sessErr)
+	}
 
 	report := Report{
 		Repos:     len(repos),
 		Snapshots: snapshots,
 		Pruned:    pruned,
 		Synced:    synced,
+		Sessions:  sessionCount,
 		Hub:       hubResult,
 		Duration:  time.Since(start),
 		Pushed:    pushed,
@@ -422,6 +437,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	interval := time.Duration(a.Config.ScanIntervalSeconds) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	// Sessions are checked on their own, faster tick so a session that starts
+	// or switches branch shows up in seconds rather than at the next scan.
+	// Both run on this one goroutine, so they never share the hub at once.
+	sessionTicker := time.NewTicker(SessionPollInterval)
+	defer sessionTicker.Stop()
 
 	a.logCycle(a.Cycle(ctx))
 
@@ -431,6 +451,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			a.logCycle(a.Cycle(ctx))
+		case <-sessionTicker.C:
+			a.publishChangedSessions(ctx)
 		}
 	}
 }
@@ -448,6 +470,7 @@ func (a *Agent) logCycle(r Report, err error) {
 		"snapshots", r.Snapshots,
 		"pruned", r.Pruned,
 		"synced", r.Synced,
+		"sessions", r.Sessions,
 		"secrets", r.Findings,
 		"took", r.Duration.Round(time.Millisecond),
 		"pushed", r.Pushed,

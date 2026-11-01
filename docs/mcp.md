@@ -12,6 +12,7 @@ on any machine can answer questions about all of them. The server is read-only.
 | `snapshot_history` | Saved snapshots of a repository |
 | `secret_findings` | Credential locations, including in stashes and unpushed commits |
 | `where_was_i` | A summary of recent activity across machines, or on one |
+| `sessions` | Claude Code and Codex sessions: machine, mailbox address, last seen, transcript path, and every repository and branch each worked in. Filter by `repo` (name or id), `branch`, `machine`, and `active` (seen within `activeMinutes`, default 30) |
 
 ## Setup
 

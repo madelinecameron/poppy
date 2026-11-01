@@ -301,3 +301,10 @@ func (c *Collector) lastFetch(ctx context.Context, g *gitx.Runner) *time.Time {
 	t := info.ModTime()
 	return &t
 }
+
+// RepoID derives the cross-machine identity of the repository at path exactly
+// as Repo does, for a caller that needs the identity and nothing else.
+func RepoID(ctx context.Context, path string) string {
+	remotes, _ := (&Collector{}).remotes(ctx, gitx.New(path))
+	return repoid.RepoID(primaryRemote(remotes), path)
+}
