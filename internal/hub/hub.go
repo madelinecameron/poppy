@@ -168,7 +168,7 @@ func (s *Store) Pull(ctx context.Context) error {
 // whether the state reached the remote; a false return with a nil error means
 // the state is committed locally and will publish on a later cycle.
 func (s *Store) Publish(ctx context.Context, manifest model.Manifest, repos []model.Repo) (pushed bool, err error) {
-	return s.publish(ctx, manifest.Machine, true, func() error { return s.write(manifest, repos) })
+	return s.publish(ctx, manifest.Machine, true, stateMessage(manifest.Machine), func() error { return s.write(manifest, repos) })
 }
 
 // PublishSessions replaces this machine's harness sessions in the hub. It is
@@ -176,18 +176,66 @@ func (s *Store) Publish(ctx context.Context, manifest model.Manifest, repos []mo
 // the fleet without waiting for a full scan. Nothing is pushed when the
 // sessions are unchanged, which is the usual case for a scheduled call.
 func (s *Store) PublishSessions(ctx context.Context, machine string, records []model.Session) (pushed bool, err error) {
-	return s.publish(ctx, machine, false, func() error { return s.writeSessions(machine, records) })
+	return s.publish(ctx, machine, false, stateMessage(machine), func() error { return s.writeSessions(machine, records) })
 }
 
 // PublishDeploys replaces this machine's deploys in the hub. Like sessions,
 // nothing is pushed when they are unchanged.
 func (s *Store) PublishDeploys(ctx context.Context, machine string, records []model.Deploy) (pushed bool, err error) {
-	return s.publish(ctx, machine, false, func() error { return s.writeDeploys(machine, records) })
+	return s.publish(ctx, machine, false, stateMessage(machine), func() error { return s.writeDeploys(machine, records) })
+}
+
+// ValidMachine reports whether name can only ever name one directory under
+// machines/. A name that could reach outside it is never used as a path.
+func ValidMachine(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\`)
+}
+
+// MachineFiles lists the files a machine has in the hub, relative to the hub
+// root, sorted. A machine that never published has none.
+func (s *Store) MachineFiles(machine string) ([]string, error) {
+	if !ValidMachine(machine) {
+		return nil, fmt.Errorf("invalid machine name %q", machine)
+	}
+	var out []string
+	err := filepath.WalkDir(s.machineDir(machine), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			rel, err := filepath.Rel(s.Dir, path)
+			if err != nil {
+				return err
+			}
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	sort.Strings(out)
+	return out, err
+}
+
+// Retire removes every record a machine published, in one commit, and pushes
+// it. It is for a machine that is gone for good: one that is still running
+// poppy writes its directory back on its next scan.
+func (s *Store) Retire(ctx context.Context, machine string) (pushed bool, err error) {
+	if !ValidMachine(machine) {
+		return false, fmt.Errorf("invalid machine name %q", machine)
+	}
+	msg := fmt.Sprintf("retire(%s): %s", machine, time.Now().UTC().Format(time.RFC3339))
+	return s.publish(ctx, machine, false, msg, func() error { return os.RemoveAll(s.machineDir(machine)) })
+}
+
+func stateMessage(machine string) string {
+	return fmt.Sprintf("state(%s): %s", machine, time.Now().UTC().Format(time.RFC3339))
 }
 
 // publish runs one write-commit-push cycle on this machine's directory. With
 // always false, a write that changes nothing pushes nothing.
-func (s *Store) publish(ctx context.Context, machine string, always bool, write func() error) (bool, error) {
+func (s *Store) publish(ctx context.Context, machine string, always bool, msg string, write func() error) (bool, error) {
 	var lastErr error
 	for range PushRetries {
 		// Adopt the remote's history before writing so a push race resolves
@@ -198,7 +246,7 @@ func (s *Store) publish(ctx context.Context, machine string, always bool, write 
 		if err := write(); err != nil {
 			return false, err
 		}
-		changed, err := s.commit(ctx, machine)
+		changed, err := s.commit(ctx, machine, msg)
 		if err != nil {
 			return false, err
 		}
@@ -330,7 +378,7 @@ func (s *Store) write(manifest model.Manifest, repos []model.Repo) error {
 }
 
 // commit stages this machine's directory and reports whether anything changed.
-func (s *Store) commit(ctx context.Context, machine string) (bool, error) {
+func (s *Store) commit(ctx context.Context, machine, msg string) (bool, error) {
 	pathspec := filepath.Join("machines", machine)
 	if _, err := s.git.Run(ctx, "add", "-A", "--", pathspec); err != nil {
 		return false, err
@@ -338,7 +386,6 @@ func (s *Store) commit(ctx context.Context, machine string) (bool, error) {
 	if out, err := s.git.Run(ctx, "status", "--porcelain", "--", pathspec); err == nil && out == "" {
 		return false, nil
 	}
-	msg := fmt.Sprintf("state(%s): %s", machine, time.Now().UTC().Format(time.RFC3339))
 	if _, err := s.git.Run(ctx, "commit", "--quiet", "-m", msg, "--", pathspec); err != nil {
 		return false, err
 	}

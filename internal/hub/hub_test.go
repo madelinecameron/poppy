@@ -473,3 +473,68 @@ func TestPublishDeploysRemovesPrunedDeploys(t *testing.T) {
 		t.Errorf("deploys = %+v, want only d2", got)
 	}
 }
+
+func TestRetireRemovesOneMachineEverywhereInOneCommit(t *testing.T) {
+	ctx := context.Background()
+	remote := gittest.NewBare(t, Branch)
+	root := t.TempDir()
+
+	laptop := openStore(t, filepath.Join(root, "laptop"), remote)
+	gone := openStore(t, filepath.Join(root, "gone"), remote)
+	if _, err := laptop.Publish(ctx, manifestFor("laptop", 1), []model.Repo{repoFor("laptop", "poppy", 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gone.Publish(ctx, manifestFor("Mac.localdomain", 1), []model.Repo{repoFor("Mac.localdomain", "api", 1)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gone.PublishDeploys(ctx, "Mac.localdomain", []model.Deploy{{ID: "d1", Time: time.Now(), Project: "p", Env: "e", Service: "s"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := laptop.Pull(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := laptop.MachineFiles("Mac.localdomain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 {
+		t.Fatalf("files = %v, want manifest, repo and deploy", files)
+	}
+	before, _ := laptop.git.Run(ctx, "rev-list", "--count", "HEAD")
+
+	pushed, err := laptop.Retire(ctx, "Mac.localdomain")
+	if err != nil || !pushed {
+		t.Fatalf("retire: pushed=%v err=%v", pushed, err)
+	}
+	after, _ := laptop.git.Run(ctx, "rev-list", "--count", "HEAD")
+	if before == after {
+		t.Error("retire made no commit")
+	}
+	if subject, _ := laptop.git.Run(ctx, "log", "-1", "--format=%s"); len(subject) < 7 || subject[:7] != "retire(" {
+		t.Errorf("commit subject = %q", subject)
+	}
+
+	if err := gone.Pull(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fleet, err := gone.Fleet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := machineNames(fleet); len(got) != 1 || got[0] != "laptop" {
+		t.Errorf("machines after retire = %v, want only laptop", got)
+	}
+}
+
+func TestRetireRefusesANameThatIsAPath(t *testing.T) {
+	s := openStore(t, t.TempDir(), "")
+	for _, name := range []string{"", ".", "..", "../x", "a/b", `a\b`} {
+		if _, err := s.Retire(context.Background(), name); err == nil {
+			t.Errorf("retire %q succeeded", name)
+		}
+		if _, err := s.MachineFiles(name); err == nil {
+			t.Errorf("machine files %q succeeded", name)
+		}
+	}
+}

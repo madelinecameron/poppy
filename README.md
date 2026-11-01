@@ -50,7 +50,13 @@ poppy restore             # recover the last snapshot of this repository
 poppy grab laptop:api     # bring uncommitted work from another machine here
 poppy secrets             # credentials found in working trees, stashes, and unpushed commits
 poppy sessions --active   # Claude Code and Codex sessions, where they work, how to reach them
+poppy machines retire --dry-run old-laptop  # list a dead machine's hub records
 ```
+
+`poppy machines retire <name>` deletes a machine's records from the hub in one
+commit. Use it for a machine that is gone or was renamed. It refuses this
+machine, and a machine that reported within `staleAfterSeconds` unless you pass
+`--force`, because a running poppy would write its records back.
 
 Run `poppy` with no arguments for the full command list.
 

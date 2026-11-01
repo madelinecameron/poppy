@@ -21,6 +21,7 @@ commands:
   dirty       every dirty working tree in the fleet, oldest first
   find        locate a repository or branch across machines
   machines    agents, versions, and heartbeats
+              ("machines retire <name>" drops a dead machine from the hub)
   scan        run one scan of this machine now
   daemon      start the background agent (--stop, --status, --install)
 
