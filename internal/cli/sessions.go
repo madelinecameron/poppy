@@ -73,7 +73,7 @@ func sessionHook(ctx context.Context, args []string, stdin io.Reader) (err error
 			if token == "" {
 				return "", errors.New("no MAILBOX_TOKEN in the environment or " + sessions.SecretsPath(os.Getenv))
 			}
-			return sessions.Whoami(ctx, nil, url, token, sessionID)
+			return sessions.Whoami(ctx, nil, url, token, sessions.MailboxSession(args[0], sessionID, os.Getenv))
 		}
 	}
 	return errors.Join(cfgErr, h.Handle(ctx, payload))

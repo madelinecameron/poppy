@@ -75,6 +75,19 @@ func parseToken(data []byte) string {
 	return token
 }
 
+// MailboxSession is the session id the harness's own Mailbox client sends as
+// X-Mailbox-Session, which is the id the address has to be looked up under.
+// Codex's client sends $MAILBOX_SESSION, a fresh id per launch, not the
+// session id in the hook payload. Claude Code's client sends the payload's id.
+func MailboxSession(harness, sessionID string, getenv func(string) string) string {
+	if harness == Codex {
+		if s := strings.TrimSpace(getenv("MAILBOX_SESSION")); s != "" {
+			return s
+		}
+	}
+	return sessionID
+}
+
 // Whoami asks the mailbox server for the address that reaches sessionID. A
 // nil client uses http.DefaultClient; the call is bounded by WhoamiTimeout
 // whatever the client's own settings.
