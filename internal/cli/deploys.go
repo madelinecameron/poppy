@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/deploys"
@@ -40,7 +39,11 @@ func runDeploys(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("deploys", flag.ContinueOnError)
 	since := fs.Duration("since", 30*24*time.Hour, "only deploys this recent")
 	project := fs.String("project", "", "only deploys of this project")
+	env := fs.String("env", "", "only deploys to this env")
+	service := fs.String("service", "", "only deploys of this service")
+	machine := fs.String("machine", "", "only deploys run from this machine")
 	failed := fs.Bool("failed", false, "only deploys that failed")
+	limit := fs.Int("limit", 0, "show at most this many, newest first")
 	asJSON := fs.Bool("json", false, "print JSON")
 	noPull := fs.Bool("no-pull", false, "skip fetching the latest fleet state")
 	if err := fs.Parse(args); err != nil {
@@ -60,13 +63,10 @@ func runDeploys(ctx context.Context, args []string) error {
 	}
 
 	now := time.Now()
-	list := []model.Deploy{}
-	for _, d := range fleet.Deploys(now.Add(-*since)) {
-		if (*project != "" && !strings.EqualFold(d.Project, *project)) || (*failed && d.OK) {
-			continue
-		}
-		list = append(list, d)
-	}
+	list := fleet.FilterDeploys(model.DeployFilter{
+		Since: now.Add(-*since), Project: *project, Env: *env, Service: *service,
+		Machine: *machine, Failed: *failed, Limit: *limit,
+	})
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

@@ -29,6 +29,7 @@ func sampleFleet(now time.Time) model.Fleet {
 	return model.Fleet{Machines: []model.MachineState{
 		{
 			Manifest: model.Manifest{Machine: "devbox", OS: "linux", Arch: "amd64", Heartbeat: now.Add(-time.Minute)},
+			Deploys:  sampleDeploys(now),
 			Repos: []model.Repo{
 				{
 					RepoID: "p1", Name: "poppy", Machine: "devbox", Path: "/home/mads/code/poppy",
@@ -165,7 +166,7 @@ func TestToolsListReturnsEverySchema(t *testing.T) {
 	want := map[string]bool{
 		"fleet_status": true, "dirty_trees": true, "find_work": true,
 		"repo_state": true, "snapshot_history": true, "secret_findings": true,
-		"where_was_i": true, "sessions": true,
+		"where_was_i": true, "sessions": true, "deploys": true,
 	}
 	if len(res.Tools) != len(want) {
 		t.Errorf("listed %d tools, want %d", len(res.Tools), len(want))
@@ -578,6 +579,47 @@ func TestSessionsToolFilters(t *testing.T) {
 		}
 		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
 			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func sampleDeploys(now time.Time) []model.Deploy {
+	return []model.Deploy{
+		{ID: "d1", Time: now.Add(-3 * time.Hour), Project: "workplace", Env: "prod", Service: "mailbox", OK: true, Machine: "devbox", Revision: "abc"},
+		{ID: "d2", Time: now.Add(-1 * time.Hour), Project: "workplace", Env: "prod", Service: "operations", OK: false, Error: "compose up failed", Machine: "devbox"},
+		{ID: "d3", Time: now.Add(-2 * time.Hour), Project: "hermes", Env: "prod", Service: "hermes", OK: true, Machine: "laptop"},
+		{ID: "d4", Time: now.Add(-60 * 24 * time.Hour), Project: "workplace", Env: "prod", Service: "mailbox", OK: true, Machine: "devbox"},
+	}
+}
+
+func TestDeploysToolListsNewestFirstAndFilters(t *testing.T) {
+	s, _ := newTestServer(time.Now())
+	for name, tc := range map[string]struct {
+		args map[string]any
+		want []string
+	}{
+		"defaults":        {map[string]any{}, []string{"d2", "d3", "d1"}},
+		"project":         {map[string]any{"project": "Workplace"}, []string{"d2", "d1"}},
+		"env and service": {map[string]any{"env": "prod", "service": "mailbox"}, []string{"d1"}},
+		"machine":         {map[string]any{"machine": "laptop"}, []string{"d3"}},
+		"failed":          {map[string]any{"failed": true}, []string{"d2"}},
+		"limit":           {map[string]any{"limit": 1}, []string{"d2"}},
+		"further back":    {map[string]any{"sinceHours": 24 * 90, "service": "mailbox"}, []string{"d1", "d4"}},
+		"nothing matches": {map[string]any{"project": "nope"}, nil},
+	} {
+		var res struct {
+			Count   int            `json:"count"`
+			Deploys []model.Deploy `json:"deploys"`
+		}
+		if err := json.Unmarshal([]byte(callTool(t, s, "deploys", tc.args)), &res); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, d := range res.Deploys {
+			got = append(got, d.ID)
+		}
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") || res.Count != len(tc.want) {
+			t.Errorf("%s: got %v (count %d), want %v", name, got, res.Count, tc.want)
 		}
 	}
 }

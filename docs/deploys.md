@@ -22,9 +22,11 @@ revision it ran afterwards.
 poppy deploys                        # last 30 days, newest first
 poppy deploys --since 168h --failed
 poppy deploys --project workplace --json
+poppy deploys --env prod --service mailbox --limit 5
 ```
 
 `poppy status --json` carries the same records under each machine's `Deploys`.
+The MCP `deploys` tool gives agents the same list with the same filters.
 
 ## Where things are
 
