@@ -444,14 +444,55 @@ func (d Deploy) Ref() string { return d.Project + "/" + d.Env + "/" + d.Service 
 
 // Deploys returns every machine's deploys at or after since, newest first.
 func (f Fleet) Deploys(since time.Time) []Deploy {
-	var out []Deploy
+	return f.FilterDeploys(DeployFilter{Since: since})
+}
+
+// DeployFilter narrows a fleet's deploys. Empty fields match everything;
+// names match case-insensitively.
+type DeployFilter struct {
+	Since   time.Time
+	Project string
+	Env     string
+	Service string
+	// Machine is the machine that ran the deploy.
+	Machine string
+	Failed  bool
+	// Limit, when positive, keeps only the newest Limit deploys.
+	Limit int
+}
+
+// Matches reports whether a deploy passes the filter.
+func (f DeployFilter) Matches(d Deploy) bool {
+	switch {
+	case d.Time.Before(f.Since):
+		return false
+	case f.Failed && d.OK:
+		return false
+	}
+	for _, c := range [][2]string{
+		{f.Project, d.Project}, {f.Env, d.Env}, {f.Service, d.Service}, {f.Machine, d.Machine},
+	} {
+		if c[0] != "" && !strings.EqualFold(c[0], c[1]) {
+			return false
+		}
+	}
+	return true
+}
+
+// FilterDeploys returns every deploy in the fleet that passes the filter,
+// newest first.
+func (f Fleet) FilterDeploys(filter DeployFilter) []Deploy {
+	out := []Deploy{}
 	for _, m := range f.Machines {
 		for _, d := range m.Deploys {
-			if !d.Time.Before(since) {
+			if filter.Matches(d) {
 				out = append(out, d)
 			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Time.After(out[j].Time) })
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
 	return out
 }

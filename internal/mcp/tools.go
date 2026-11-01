@@ -137,6 +137,33 @@ func registry() []tool {
 		},
 		{
 			descriptor: toolDescriptor{
+				Name: "deploys",
+				Description: "Deploys houseparty recorded on any machine, most recent first: which service, whether it worked, the revision it ran, who ran it and from where. " +
+					"Answers 'when did this service last deploy?' and 'what failed to deploy this week?'.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "Optional project to restrict to."},
+						"env":     map[string]any{"type": "string", "description": "Optional env to restrict to, such as prod."},
+						"service": map[string]any{"type": "string", "description": "Optional service to restrict to."},
+						"machine": map[string]any{"type": "string", "description": "Optional machine the deploy ran from."},
+						"failed":  map[string]any{"type": "boolean", "description": "Only deploys that failed."},
+						"sinceHours": map[string]any{
+							"type":        "integer",
+							"description": "How far back to look. Default 720 (30 days).",
+						},
+						"limit": map[string]any{
+							"type":        "integer",
+							"description": "Most deploys to return. Default 50.",
+						},
+					},
+				},
+				Annotations: readOnly(),
+			},
+			handle: deploysTool,
+		},
+		{
+			descriptor: toolDescriptor{
 				Name:        "where_was_i",
 				Description: "A narrative digest of recent activity across the fleet: what was touched, what advanced, and what is still uncommitted. Answers 'what was I working on?'.",
 				InputSchema: map[string]any{
@@ -423,6 +450,43 @@ func sessionsTool(ctx context.Context, s *Server, args map[string]any) (string, 
 		ActiveMinutes int           `json:"activeMinutes"`
 		Sessions      []sessionView `json:"sessions"`
 	}{Count: len(views), ActiveMinutes: minutes, Sessions: views})
+}
+
+const (
+	defaultDeploySinceHours = 30 * 24
+	defaultDeployLimit      = 50
+)
+
+func deploysTool(ctx context.Context, s *Server, args map[string]any) (string, error) {
+	sinceHours := defaultDeploySinceHours
+	if v, ok := args["sinceHours"].(float64); ok && v > 0 {
+		sinceHours = int(v)
+	}
+	limit := defaultDeployLimit
+	if v, ok := args["limit"].(float64); ok && v > 0 {
+		limit = int(v)
+	}
+	failed, _ := args["failed"].(bool)
+
+	fleet, err := s.fleet(ctx)
+	if err != nil {
+		return "", err
+	}
+	list := fleet.FilterDeploys(model.DeployFilter{
+		Since:   time.Now().Add(-time.Duration(sinceHours) * time.Hour),
+		Project: argString(args, "project"),
+		Env:     argString(args, "env"),
+		Service: argString(args, "service"),
+		Machine: argString(args, "machine"),
+		Failed:  failed,
+		Limit:   limit,
+	})
+	return jsonText(struct {
+		Count      int            `json:"count"`
+		SinceHours int            `json:"sinceHours"`
+		Limit      int            `json:"limit"`
+		Deploys    []model.Deploy `json:"deploys"`
+	}{Count: len(list), SinceHours: sinceHours, Limit: limit, Deploys: list})
 }
 
 func findWork(ctx context.Context, s *Server, args map[string]any) (string, error) {
