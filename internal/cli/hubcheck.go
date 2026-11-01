@@ -138,10 +138,19 @@ func printHubIntegrity(w io.Writer, h model.HubIntegrity, now time.Time) {
 
 	for _, report := range h.Reports {
 		verdict := report.Verdict()
-		if verdict == hubcheck.StatusClean {
+		if verdict == hubcheck.StatusClean || report.Superseded {
 			continue
 		}
 		result := report.Result
+		if report.Stale {
+			checked := "no check recorded"
+			if result != nil {
+				checked = fmt.Sprintf("last check %s was %s", relTime(result.CheckedAt, now), verdict)
+			}
+			fmt.Fprintf(w, "  %s  %s  %s\n", paint(cyan, report.Machine),
+				paint(bold+yellow, "STALE"), paint(dim, checked+"; not counted"))
+			continue
+		}
 		if result == nil {
 			// A machine publishing a document with no check in it at all,
 			// from an older poppy. Named rather than passed over, because the

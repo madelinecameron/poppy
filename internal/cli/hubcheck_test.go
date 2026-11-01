@@ -18,7 +18,7 @@ func fleetWith(hub *hubcheck.Result) model.Fleet {
 
 func renderIntegrity(f model.Fleet) string {
 	var b bytes.Buffer
-	printHubIntegrity(&b, f.HubIntegrity(), time.Now())
+	printHubIntegrity(&b, f.HubIntegrity(time.Now(), 0), time.Now())
 	return b.String()
 }
 
@@ -135,5 +135,36 @@ func TestTheHandRunReportShowsEachCheckSeparately(t *testing.T) {
 	// The headline must not read clean while half of it was skipped.
 	if strings.HasPrefix(strings.TrimSpace(out), "HUB  clean") {
 		t.Errorf("the headline is clean while the fsck was skipped:\n%s", out)
+	}
+}
+
+func TestThePaneMarksAStaleFindingAsNotCounted(t *testing.T) {
+	now := time.Now()
+	found := &hubcheck.Result{
+		CheckedAt: now.Add(-7 * 24 * time.Hour),
+		Repo:      "/opt/fleet/poppy-hub.git",
+		Sweep:     hubcheck.Check{Status: hubcheck.StatusFound},
+		Fsck:      hubcheck.Check{Status: hubcheck.StatusClean},
+	}
+	clean := &hubcheck.Result{
+		CheckedAt: now,
+		Repo:      "/opt/fleet/poppy-hub.git",
+		Sweep:     hubcheck.Check{Status: hubcheck.StatusClean},
+		Fsck:      hubcheck.Check{Status: hubcheck.StatusClean},
+	}
+	fleet := model.Fleet{Machines: []model.MachineState{
+		{Manifest: model.Manifest{Machine: "gone", Heartbeat: found.CheckedAt, Hub: found}},
+		{Manifest: model.Manifest{Machine: "mac", Heartbeat: now, Hub: clean}},
+	}}
+
+	var b bytes.Buffer
+	printHubIntegrity(&b, fleet.HubIntegrity(now, time.Hour), now)
+	out := b.String()
+
+	if strings.Contains(out, "CORRUPT") {
+		t.Errorf("a stale finding is shown as corruption:\n%s", out)
+	}
+	if !strings.Contains(out, "gone") || !strings.Contains(out, "STALE") {
+		t.Errorf("the stale machine is not named as stale:\n%s", out)
 	}
 }
