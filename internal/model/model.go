@@ -230,6 +230,15 @@ func (m MachineState) Stale(now time.Time, d time.Duration) bool {
 type HubReport struct {
 	Machine string           `json:"machine"`
 	Result  *hubcheck.Result `json:"result"`
+	// Stale marks a report too old to speak for the hub now: the machine has
+	// stopped publishing, or its last check is older than the fleet allows.
+	// It is still listed so a reader can see it, but it is counted as silent
+	// and has no say in the verdict.
+	Stale bool `json:"stale,omitempty"`
+	// Superseded marks a check of the same repository on the same host that a
+	// newer check from another machine replaced. Only the newest look at a
+	// repository decides what is in it now.
+	Superseded bool `json:"superseded,omitempty"`
 }
 
 // Verdict is what this machine's check amounts to, including the case where
@@ -247,22 +256,36 @@ type HubIntegrity struct {
 	LastRan time.Time `json:"lastRan,omitzero"`
 	Ran     int       `json:"ran"`
 	// Silent counts machines that should be checking and are not: a failed
-	// ssh, a skipped fsck, a document with no check in it. This number is the
-	// answer to "is a clean report a real one", so it is reported next to the
-	// verdict and never folded into it.
+	// ssh, a skipped fsck, a document with no check in it, a report too old
+	// to count. This number is the answer to "is a clean report a real one",
+	// so it is reported next to the verdict and never folded into it.
 	Silent int `json:"silent"`
 	// Reports carries every machine's account, so a reader can see which
 	// machines are behind a verdict and which are saying nothing.
 	Reports []HubReport `json:"reports,omitempty"`
 }
 
-// HubIntegrity assembles the fleet's view of the hub repository.
+// HubIntegrity assembles the fleet's view of the hub repository as of now.
+//
+// A report counts only while it is current: the machine's heartbeat and the
+// check itself are both within maxAge of now. A machine that went away with a
+// "found" on its last document would otherwise hold the verdict at found
+// forever, whatever every live machine has seen since. Older reports are
+// listed as stale and counted as silent. A maxAge of zero or less keeps every
+// report current.
+//
+// Among current checks that ran, only the newest per host and repository
+// decides the verdict. The verdict is found when any repository's newest
+// check found corruption.
 //
 // Machines with no hub to check are counted as neither answering nor silent: a
 // local-only poppy is not failing at something it was never asked to do.
-func (f Fleet) HubIntegrity() HubIntegrity {
+func (f Fleet) HubIntegrity(now time.Time, maxAge time.Duration) HubIntegrity {
 	h := HubIntegrity{Verdict: hubcheck.StatusUnknown}
 	var worstAbsence hubcheck.Status
+
+	type target struct{ host, repo string }
+	newest := map[target]int{}
 
 	for _, m := range f.Machines {
 		report := HubReport{Machine: m.Manifest.Machine, Result: m.Manifest.Hub}
@@ -270,16 +293,28 @@ func (f Fleet) HubIntegrity() HubIntegrity {
 		if verdict == hubcheck.StatusNotConfigured {
 			continue
 		}
+		report.Stale = maxAge > 0 && (m.Stale(now, maxAge) ||
+			(report.Result != nil && now.Sub(report.Result.CheckedAt) > maxAge))
 		h.Reports = append(h.Reports, report)
 
 		switch {
-		case verdict == hubcheck.StatusFound:
+		case report.Stale:
+			h.Silent++
+		case verdict.Ran():
 			h.Ran++
-			h.Verdict = hubcheck.StatusFound
-		case verdict == hubcheck.StatusClean:
-			h.Ran++
-			if h.Verdict != hubcheck.StatusFound {
-				h.Verdict = hubcheck.StatusClean
+			if report.Result.CheckedAt.After(h.LastRan) {
+				h.LastRan = report.Result.CheckedAt
+			}
+			key := target{report.Result.Host, report.Result.Repo}
+			i, seen := newest[key]
+			switch {
+			case !seen:
+				newest[key] = len(h.Reports) - 1
+			case report.Result.CheckedAt.After(h.Reports[i].Result.CheckedAt):
+				h.Reports[i].Superseded = true
+				newest[key] = len(h.Reports) - 1
+			default:
+				h.Reports[len(h.Reports)-1].Superseded = true
 			}
 		default:
 			h.Silent++
@@ -287,15 +322,22 @@ func (f Fleet) HubIntegrity() HubIntegrity {
 				worstAbsence = verdict
 			}
 		}
-		// A check that ran at all, clean or not, dates the fleet's answer.
-		if verdict.Ran() && m.Manifest.Hub.CheckedAt.After(h.LastRan) {
-			h.LastRan = m.Manifest.Hub.CheckedAt
+	}
+
+	for _, i := range newest {
+		switch h.Reports[i].Verdict() {
+		case hubcheck.StatusFound:
+			h.Verdict = hubcheck.StatusFound
+		case hubcheck.StatusClean:
+			if h.Verdict != hubcheck.StatusFound {
+				h.Verdict = hubcheck.StatusClean
+			}
 		}
 	}
 
 	// Nothing looked. The verdict is the loudest reason nothing looked, and
 	// under no circumstances is it clean.
-	if h.Ran == 0 && h.Verdict != hubcheck.StatusFound {
+	if h.Ran == 0 {
 		h.Verdict = worstAbsence
 	}
 	return h

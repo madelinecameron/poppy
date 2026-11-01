@@ -217,7 +217,7 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 		out.Totals.Secrets += mv.Secrets
 	}
 	out.Totals.Machines = len(fleet.Machines)
-	out.HubIntegrity = fleet.HubIntegrity()
+	out.HubIntegrity = fleet.HubIntegrity(now, staleAfter)
 	return jsonText(out)
 }
 

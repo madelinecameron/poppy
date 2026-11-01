@@ -26,6 +26,21 @@ cut short), poppy reports `NOT CHECKED` with the reason instead of `clean`.
 
 `poppy hub-check` exits non-zero for any result other than `clean`.
 
+## Fleet verdict
+
+`poppy status` and the MCP `fleet_status` tool combine every machine's last
+check into one verdict:
+
+- A report counts only while it is current. The machine's heartbeat and the
+  check itself must both be newer than `staleAfterSeconds` (default one
+  hour, twelve scan intervals). Older reports are listed as `stale` and
+  counted as silent. They do not affect the verdict.
+- Current checks are grouped by host and repository. Only the newest check in
+  each group counts. Older ones are marked `superseded`.
+- The verdict is `found` if the newest check of any repository found damage,
+  and `clean` if at least one current check ran and none found damage.
+- If no current check ran, the verdict says why, and is never `clean`.
+
 ## Access
 
 The check runs shell commands on the hub machine, so it cannot use the account
