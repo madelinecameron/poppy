@@ -47,6 +47,12 @@ Set the server URL in `~/.config/poppy/config.json`:
 the `export MAILBOX_TOKEN='mbx_...'` line in `${ZDOTDIR:-$HOME/.zsh}/secrets.zsh`.
 With no URL, sessions are recorded without an address.
 
+The address is looked up under the session id the harness's Mailbox client
+sends. For Claude Code that is the hook's `session_id`. For Codex it is
+`MAILBOX_SESSION` from the hook's environment, which the `codex` shell
+function sets fresh for each launch; without it, the hook's `session_id` is
+used.
+
 ## Reading
 
 ```sh

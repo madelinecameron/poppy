@@ -435,6 +435,28 @@ func TestSecretsPathFallsBackToHomeZsh(t *testing.T) {
 	}
 }
 
+func TestMailboxSession(t *testing.T) {
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "MAILBOX_SESSION" {
+				return v
+			}
+			return ""
+		}
+	}
+	for name, tc := range map[string]struct {
+		harness, set, want string
+	}{
+		"codex with MAILBOX_SESSION":    {Codex, " launch-1 ", "launch-1"},
+		"codex without MAILBOX_SESSION": {Codex, "", "payload"},
+		"claude ignores it":             {Claude, "launch-1", "payload"},
+	} {
+		if got := MailboxSession(tc.harness, "payload", env(tc.set)); got != tc.want {
+			t.Errorf("%s: got %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
 func TestWhoamiSendsTheTokenAndSession(t *testing.T) {
 	var gotPath, gotAuth, gotSession string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

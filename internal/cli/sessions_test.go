@@ -144,6 +144,36 @@ func TestSessionHookLooksUpTheMailboxAndKeepsTheTokenOut(t *testing.T) {
 	}
 }
 
+// Codex's Mailbox client acts as $MAILBOX_SESSION, so the address is looked up
+// under that id. Claude Code ignores the variable.
+func TestCodexSessionHookLooksUpTheMailboxSessionFromItsEnvironment(t *testing.T) {
+	dir := isolateHook(t)
+	var gotSession string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get("X-Mailbox-Session")
+		io.WriteString(w, `{"address":"k9.`+gotSession+`"}`)
+	}))
+	defer srv.Close()
+	t.Setenv("MAILBOX_URL", srv.URL)
+	t.Setenv("ZDOTDIR", t.TempDir())
+	t.Setenv("MAILBOX_TOKEN", "mbx_test")
+	t.Setenv("MAILBOX_SESSION", "0b9e7c1a-launch")
+
+	runHook(t, `{"session_id":"codex-thread","hook_event_name":"SessionStart"}`, "session-hook", "codex")
+	if gotSession != "0b9e7c1a-launch" {
+		t.Errorf("codex whoami session = %q, want MAILBOX_SESSION", gotSession)
+	}
+	rec, _, _ := sessions.Load(filepath.Join(dir, "sessions"), "codex-thread")
+	if rec.Mailbox != "k9.0b9e7c1a-launch" {
+		t.Errorf("codex mailbox = %q", rec.Mailbox)
+	}
+
+	runHook(t, `{"session_id":"claude-1","hook_event_name":"SessionStart"}`, "session-hook", "claude")
+	if gotSession != "claude-1" {
+		t.Errorf("claude whoami session = %q, want the payload's session id", gotSession)
+	}
+}
+
 func captureStdout(t *testing.T, fn func() error) string {
 	t.Helper()
 	f, err := os.Create(filepath.Join(t.TempDir(), "out"))
