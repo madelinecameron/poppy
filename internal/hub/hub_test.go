@@ -420,3 +420,56 @@ func TestPublishSessionsPushesNothingWhenUnchanged(t *testing.T) {
 		t.Errorf("hub went from %s to %s commits", before, after)
 	}
 }
+
+func deployFor(id string, at time.Time) model.Deploy {
+	return model.Deploy{ID: id, Time: at, Project: "workplace", Env: "prod", Service: "mailbox", OK: true, Revision: "abc"}
+}
+
+// Deploys published by one machine reach another, newest first, and survive
+// the next scan rewriting that machine's repositories.
+func TestDeploysConvergeAcrossMachines(t *testing.T) {
+	ctx := context.Background()
+	remote := gittest.NewBare(t, Branch)
+	root := t.TempDir()
+	laptop := openStore(t, filepath.Join(root, "laptop"), remote)
+	devbox := openStore(t, filepath.Join(root, "devbox"), remote)
+	at := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+
+	if _, err := laptop.Publish(ctx, manifestFor("laptop", 1), []model.Repo{repoFor("laptop", "poppy", 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if pushed, err := laptop.PublishDeploys(ctx, "laptop", []model.Deploy{deployFor("d1", at), deployFor("d2", at.Add(time.Hour))}); err != nil || !pushed {
+		t.Fatalf("publish deploys: pushed=%v err=%v", pushed, err)
+	}
+	if _, err := laptop.Publish(ctx, manifestFor("laptop", 1), []model.Repo{repoFor("laptop", "poppy", 1)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := devbox.Pull(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fleet, err := devbox.Fleet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := fleet.Deploys(at.Add(-time.Minute))
+	if len(got) != 2 || got[0].ID != "d2" || got[0].Machine != "laptop" {
+		t.Fatalf("deploys = %+v, want d2 then d1 from laptop", got)
+	}
+	if recent := fleet.Deploys(at.Add(time.Minute)); len(recent) != 1 {
+		t.Errorf("since filter kept %d, want 1", len(recent))
+	}
+}
+
+func TestPublishDeploysRemovesPrunedDeploys(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "hub"), "")
+	at := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+
+	s.PublishDeploys(ctx, "laptop", []model.Deploy{deployFor("d1", at), deployFor("d2", at)})
+	s.PublishDeploys(ctx, "laptop", []model.Deploy{deployFor("d2", at)})
+
+	if got := s.ReadDeploys("laptop"); len(got) != 1 || got[0].ID != "d2" {
+		t.Errorf("deploys = %+v, want only d2", got)
+	}
+}

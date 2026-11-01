@@ -509,3 +509,36 @@ func TestWhoamiRefusesAnAnswerWithNoAddress(t *testing.T) {
 		t.Error("an answer without an address was accepted")
 	}
 }
+
+func TestHookRecordsEachCommitTheSessionSaw(t *testing.T) {
+	repo := gittest.New(t, "feat/x")
+	h, _ := newHook(t, Claude)
+
+	mustHandle(t, h, Payload{SessionID: "s1", Cwd: repo.Path, Event: EventSessionStart})
+	repo.Commit("one", "a.txt", "one\n")
+	first := repo.Git("rev-parse", "HEAD")
+	mustHandle(t, h, Payload{SessionID: "s1", Cwd: repo.Path, Event: "Stop"})
+	mustHandle(t, h, Payload{SessionID: "s1", Cwd: repo.Path, Event: "UserPromptSubmit"})
+	repo.Commit("two", "a.txt", "two\n")
+	second := repo.Git("rev-parse", "HEAD")
+	mustHandle(t, h, Payload{SessionID: "s1", Cwd: repo.Path, Event: "Stop"})
+
+	rec := mustLoad(t, h, "s1")
+	if len(rec.Repos) != 1 {
+		t.Fatalf("repos = %+v", rec.Repos)
+	}
+	got := rec.Repos[0].Heads
+	if len(got) != 2 || got[0] != first || got[1] != second {
+		t.Errorf("heads = %v, want [%s %s] (none for the unborn start, no repeats)", got, first, second)
+	}
+}
+
+func TestAddHeadKeepsTheMostRecent(t *testing.T) {
+	var heads []string
+	for i := range MaxHeads + 5 {
+		heads = addHead(heads, strings.Repeat("a", i+1))
+	}
+	if len(heads) != MaxHeads || heads[len(heads)-1] != strings.Repeat("a", MaxHeads+5) {
+		t.Errorf("kept %d heads, last %q", len(heads), heads[len(heads)-1])
+	}
+}

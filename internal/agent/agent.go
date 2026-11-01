@@ -64,7 +64,12 @@ type Agent struct {
 	// SessionsDir is the local store harness hooks write session records to.
 	// Empty publishes no sessions.
 	SessionsDir string
+	// DeploysDir is the local store `poppy deploy-record` writes houseparty's
+	// deploys to. Empty publishes no deploys.
+	DeploysDir string
 
+	// deploysSeen is the deploy marker's time at the last deploy publish.
+	deploysSeen time.Time
 	// sessionsSeen is the hook marker's time at the last session publish.
 	sessionsSeen time.Time
 	// repoIDs remembers the RepoID of session paths outside the scan roots.
@@ -159,6 +164,9 @@ func (a *Agent) Cycle(ctx context.Context) (Report, error) {
 	sessionCount, sessErr := a.publishSessions(ctx, repos)
 	if sessErr != nil {
 		a.Log.Warn("session publish failed", "err", sessErr)
+	}
+	if _, err := a.publishDeploys(ctx); err != nil {
+		a.Log.Warn("deploy publish failed", "err", err)
 	}
 
 	report := Report{
@@ -453,6 +461,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.logCycle(a.Cycle(ctx))
 		case <-sessionTicker.C:
 			a.publishChangedSessions(ctx)
+			a.publishChangedDeploys(ctx)
 		}
 	}
 }

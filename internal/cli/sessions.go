@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -129,6 +130,7 @@ func runSessions(ctx context.Context, args []string) error {
 	active := fs.Bool("active", false, "only sessions seen recently and not ended")
 	within := fs.Duration("within", 30*time.Minute, "how recently an --active session was seen")
 	noPull := fs.Bool("no-pull", false, "skip fetching the latest fleet state")
+	asJSON := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -151,7 +153,16 @@ func runSessions(ctx context.Context, args []string) error {
 	if *active {
 		filter.ActiveWithin = *within
 	}
-	printSessions(os.Stdout, fleet.Sessions(filter), filter.Now, *within)
+	list := fleet.Sessions(filter)
+	if *asJSON {
+		if list == nil {
+			list = []model.Session{}
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(list)
+	}
+	printSessions(os.Stdout, list, filter.Now, *within)
 	return nil
 }
 

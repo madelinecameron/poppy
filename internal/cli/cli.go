@@ -37,6 +37,9 @@ commands:
   sessions    Claude Code and Codex sessions, where they worked, how to reach them
   session-hook <claude|codex>
               record a harness hook event read from stdin; prints nothing
+  deploys     houseparty deploys across the fleet, newest first
+  deploy-record
+              keep one houseparty deploy record read from stdin for the hub
 
   mcp         serve fleet state to agents over the Model Context Protocol
   init        write a starter configuration file
@@ -86,6 +89,10 @@ func Main(ctx context.Context, args []string) int {
 		err = runSessions(ctx, rest)
 	case "session-hook":
 		err = runSessionHook(ctx, rest)
+	case "deploys":
+		err = runDeploys(ctx, rest)
+	case "deploy-record":
+		err = runDeployRecord(ctx, rest)
 	case "mcp":
 		err = runMCP(ctx, rest)
 	case "init":

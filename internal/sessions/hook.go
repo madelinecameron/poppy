@@ -40,7 +40,11 @@ const (
 // The least recently seen entry is dropped first.
 const MaxRepos = 50
 
-// gitTimeout bounds the one git call a hook makes. A hook that hangs holds up
+// MaxHeads bounds the commits kept for one repository and branch of a
+// session.
+const MaxHeads = 100
+
+// gitTimeout bounds each of the two git calls a hook makes. A hook that hangs holds up
 // the user's prompt.
 const gitTimeout = 2 * time.Second
 
@@ -150,7 +154,7 @@ func (h Hook) Handle(ctx context.Context, p Payload) error {
 		case err != nil:
 			problems = append(problems, err)
 		case top != "":
-			touchRepo(&rec, top, branch, now)
+			touchRepo(&rec, top, branch, headCommit(ctx, top), now)
 		}
 	}
 
@@ -168,16 +172,17 @@ func (h Hook) Handle(ctx context.Context, p Payload) error {
 // touchRepo records that the session is in the repository at top on branch.
 // Returning to a repository and branch it was in before updates that entry
 // rather than adding a second one.
-func touchRepo(rec *model.Session, top, branch string, now time.Time) {
+func touchRepo(rec *model.Session, top, branch, head string, now time.Time) {
 	for i := range rec.Repos {
 		if rec.Repos[i].Path == top && rec.Repos[i].Branch == branch {
 			rec.Repos[i].LastSeen = now
+			rec.Repos[i].Heads = addHead(rec.Repos[i].Heads, head)
 			return
 		}
 	}
 	rec.Repos = append(rec.Repos, model.SessionRepo{
 		Path: top, Name: filepath.Base(top), Branch: branch,
-		FirstSeen: now, LastSeen: now,
+		FirstSeen: now, LastSeen: now, Heads: addHead(nil, head),
 	})
 	if len(rec.Repos) > MaxRepos {
 		oldest := 0
@@ -188,6 +193,31 @@ func touchRepo(rec *model.Session, top, branch string, now time.Time) {
 		}
 		rec.Repos = append(rec.Repos[:oldest], rec.Repos[oldest+1:]...)
 	}
+}
+
+// addHead appends head unless it is the latest one already recorded, keeping
+// at most MaxHeads.
+func addHead(heads []string, head string) []string {
+	if head == "" || (len(heads) > 0 && heads[len(heads)-1] == head) {
+		return heads
+	}
+	heads = append(heads, head)
+	if len(heads) > MaxHeads {
+		heads = heads[len(heads)-MaxHeads:]
+	}
+	return heads
+}
+
+// headCommit returns the commit HEAD points at in the working tree at top, or
+// "" on a branch with no commits yet.
+func headCommit(ctx context.Context, top string) string {
+	g := gitx.New(top)
+	g.Timeout = gitTimeout
+	sha, err := g.Run(ctx, "rev-parse", "-q", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return ""
+	}
+	return sha
 }
 
 // material reports whether a record changed in a way another agent would want
