@@ -37,14 +37,16 @@ func runStatus(ctx context.Context, args []string) error {
 		return err
 	}
 
+	now := time.Now()
+	staleAfter := time.Duration(cfg.StaleAfterSeconds) * time.Second
+
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(fleet)
+		return enc.Encode(statusView(fleet, now, staleAfter))
 	}
 
-	now := time.Now()
-	printFleet(fleet, cfg.Machine, time.Duration(cfg.StaleAfterSeconds)*time.Second, now, *all)
+	printFleet(fleet, cfg.Machine, staleAfter, now, *all)
 
 	if diverged := grab.Divergences(fleet); len(diverged) > 0 {
 		fmt.Println()
@@ -67,6 +69,50 @@ func runStatus(ctx context.Context, args []string) error {
 		fmt.Println(paint(dim, "hub unreachable; showing last known state"))
 	}
 	return nil
+}
+
+// statusFleet is the document "poppy status --json" prints: the stored fleet
+// documents, with poppy's own judgements added beside them so a reader never
+// has to re-derive the at-risk rule. docs/status-json.md lists the fields.
+type statusFleet struct {
+	Machines []statusMachine `json:"Machines"`
+}
+
+type statusMachine struct {
+	model.MachineState
+	Repos    []statusRepo `json:"Repos"`
+	Stale    bool         `json:"stale"`
+	AtRisk   int          `json:"atRisk"`
+	Unpushed int          `json:"unpushed"`
+}
+
+type statusRepo struct {
+	model.Repo
+	AtRisk   bool `json:"atRisk"`
+	Unpushed int  `json:"unpushed"`
+}
+
+func statusView(fleet model.Fleet, now time.Time, staleAfter time.Duration) statusFleet {
+	out := statusFleet{Machines: []statusMachine{}}
+	for _, m := range fleet.Machines {
+		sum := m.Summary(now, staleAfter)
+		sm := statusMachine{
+			MachineState: m,
+			Repos:        []statusRepo{},
+			Stale:        sum.Stale,
+			AtRisk:       sum.AtRisk,
+			Unpushed:     sum.Unpushed,
+		}
+		for _, r := range m.Repos {
+			sm.Repos = append(sm.Repos, statusRepo{
+				Repo:     r,
+				AtRisk:   r.AtRisk(),
+				Unpushed: len(r.UnpushedBranches()),
+			})
+		}
+		out.Machines = append(out.Machines, sm)
+	}
+	return out
 }
 
 func printFleet(fleet model.Fleet, thisMachine string, staleAfter time.Duration, now time.Time, all bool) {
