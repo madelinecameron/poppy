@@ -31,6 +31,9 @@ func TestStatusJSONCarriesPoppysJudgements(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc struct {
+		HubIntegrity struct {
+			Verdict *string `json:"verdict"`
+		} `json:"hubIntegrity"`
 		Machines []struct {
 			Manifest struct {
 				Machine string `json:"machine"`
@@ -47,6 +50,9 @@ func TestStatusJSONCarriesPoppysJudgements(t *testing.T) {
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatal(err)
+	}
+	if doc.HubIntegrity.Verdict == nil {
+		t.Errorf("hubIntegrity.verdict missing: %s", data)
 	}
 	if len(doc.Machines) != 2 {
 		t.Fatalf("machines = %d, want 2: %s", len(doc.Machines), data)

@@ -75,7 +75,8 @@ func runStatus(ctx context.Context, args []string) error {
 // documents, with poppy's own judgements added beside them so a reader never
 // has to re-derive the at-risk rule. docs/status-json.md lists the fields.
 type statusFleet struct {
-	Machines []statusMachine `json:"Machines"`
+	Machines     []statusMachine    `json:"Machines"`
+	HubIntegrity model.HubIntegrity `json:"hubIntegrity"`
 }
 
 type statusMachine struct {
@@ -93,7 +94,10 @@ type statusRepo struct {
 }
 
 func statusView(fleet model.Fleet, now time.Time, staleAfter time.Duration) statusFleet {
-	out := statusFleet{Machines: []statusMachine{}}
+	out := statusFleet{
+		Machines:     []statusMachine{},
+		HubIntegrity: fleet.HubIntegrity(now, staleAfter),
+	}
 	for _, m := range fleet.Machines {
 		sum := m.Summary(now, staleAfter)
 		sm := statusMachine{
