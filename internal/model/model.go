@@ -226,6 +226,41 @@ func (m MachineState) Stale(now time.Time, d time.Duration) bool {
 	return now.Sub(m.Manifest.Heartbeat) > d
 }
 
+// MachineSummary counts what one machine holds. It is the one place the
+// per-machine numbers are derived, so every view of the fleet reports the
+// same ones.
+type MachineSummary struct {
+	Stale bool
+	Repos int
+	// Dirty, Unpushed and AtRisk count repositories, not files or branches.
+	Dirty     int
+	Unpushed  int
+	AtRisk    int
+	Snapshots int
+	Secrets   int
+}
+
+// Summary counts the machine's repositories by Repo's own rules.
+func (m MachineState) Summary(now time.Time, staleAfter time.Duration) MachineSummary {
+	s := MachineSummary{Stale: m.Stale(now, staleAfter), Repos: len(m.Repos)}
+	for _, r := range m.Repos {
+		if r.Dirty.Any() {
+			s.Dirty++
+		}
+		if r.Unpushed() {
+			s.Unpushed++
+		}
+		if r.AtRisk() {
+			s.AtRisk++
+		}
+		if r.Snapshot != nil && r.Snapshot.Synced {
+			s.Snapshots++
+		}
+		s.Secrets += r.SecretCount()
+	}
+	return s
+}
+
 // HubReport is one machine's account of the shared hub repository.
 type HubReport struct {
 	Machine string           `json:"machine"`

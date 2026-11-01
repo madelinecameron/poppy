@@ -62,6 +62,7 @@ Run `poppy` with no arguments for the full command list.
 - [Hub integrity check](docs/hub-check.md)
 - [Agent sessions](docs/sessions.md)
 - [Deploys](docs/deploys.md)
+- [`poppy status --json` fields](docs/status-json.md)
 - [MCP server](docs/mcp.md)
 
 ## Development

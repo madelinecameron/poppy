@@ -5,7 +5,7 @@ on any machine can answer questions about all of them. The server is read-only.
 
 | Tool | Returns |
 |------|---------|
-| `fleet_status` | Every machine, when it last reported, and its dirty, unpushed, and backed-up counts |
+| `fleet_status` | Every machine, when it last reported, and its dirty, unpushed, at-risk, and backed-up counts |
 | `dirty_trees` | Uncommitted work across all machines, oldest first |
 | `find_work` | Where a repository or branch exists |
 | `repo_state` | The full state of one repository |

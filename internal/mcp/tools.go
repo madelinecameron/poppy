@@ -169,6 +169,7 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 		Repos     int       `json:"repos"`
 		Dirty     int       `json:"dirty"`
 		Unpushed  int       `json:"unpushed"`
+		AtRisk    int       `json:"atRisk"`
 		Snapshots int       `json:"snapshotsSynced"`
 		Secrets   int       `json:"secretFindings"`
 	}
@@ -177,6 +178,7 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 		Repos    int `json:"repos"`
 		Dirty    int `json:"dirty"`
 		Unpushed int `json:"unpushed"`
+		AtRisk   int `json:"atRisk"`
 		Secrets  int `json:"secretFindings"`
 	}
 	out := struct {
@@ -190,30 +192,25 @@ func fleetStatus(ctx context.Context, s *Server, _ map[string]any) (string, erro
 	}{}
 
 	for _, m := range fleet.Machines {
+		sum := m.Summary(now, staleAfter)
 		mv := machineView{
-			Machine:  m.Manifest.Machine,
-			OS:       m.Manifest.OS,
-			Arch:     m.Manifest.Arch,
-			LastSeen: m.Manifest.Heartbeat,
-			Stale:    m.Stale(now, staleAfter),
-			Repos:    len(m.Repos),
-		}
-		for _, r := range m.Repos {
-			if r.Dirty.Any() {
-				mv.Dirty++
-			}
-			if r.Unpushed() {
-				mv.Unpushed++
-			}
-			if r.Snapshot != nil && r.Snapshot.Synced {
-				mv.Snapshots++
-			}
-			mv.Secrets += r.SecretCount()
+			Machine:   m.Manifest.Machine,
+			OS:        m.Manifest.OS,
+			Arch:      m.Manifest.Arch,
+			LastSeen:  m.Manifest.Heartbeat,
+			Stale:     sum.Stale,
+			Repos:     sum.Repos,
+			Dirty:     sum.Dirty,
+			Unpushed:  sum.Unpushed,
+			AtRisk:    sum.AtRisk,
+			Snapshots: sum.Snapshots,
+			Secrets:   sum.Secrets,
 		}
 		out.Machines = append(out.Machines, mv)
 		out.Totals.Repos += mv.Repos
 		out.Totals.Dirty += mv.Dirty
 		out.Totals.Unpushed += mv.Unpushed
+		out.Totals.AtRisk += mv.AtRisk
 		out.Totals.Secrets += mv.Secrets
 	}
 	out.Totals.Machines = len(fleet.Machines)
