@@ -69,6 +69,13 @@ poppy daemon --stop
 poppy scan                # scan once, now
 ```
 
+The daemon picks up a new binary on its own. Between cycles it checks whether
+the file it started from has been replaced, by a new file renamed over it or the
+same file rewritten, and if so exits with status 75. The service manager starts
+it again on the new binary: systemd (`Restart=always`, or `on-failure` in units
+from older versions) or launchd (`KeepAlive`). A daemon started without a
+service just stops; start it again.
+
 On Linux, `--install` enables lingering so the user service starts without a
 login.
 

@@ -150,6 +150,10 @@ func startDaemon(interval time.Duration) error {
 	return cmd.Process.Release()
 }
 
+// exitReplaced is EX_TEMPFAIL: the daemon stopped only so the new binary can
+// start.
+const exitReplaced = 75
+
 // runAgentLoop runs the scan loop in the current process until interrupted.
 func runAgentLoop(ctx context.Context, interval time.Duration) error {
 	cfg, store, err := setup(ctx)
@@ -173,10 +177,21 @@ func runAgentLoop(ctx context.Context, interval time.Duration) error {
 	a := agent.New(cfg, store, log)
 	a.SessionsDir = sessions.Dir()
 	a.DeploysDir = deploys.Dir()
+	if replaced, err := agent.WatchExecutable(); err == nil {
+		a.Replaced = replaced
+	} else {
+		log.Warn("cannot watch the poppy binary; a new version needs a manual restart", "err", err)
+	}
 	err = a.Run(ctx)
 	if ctx.Err() != nil {
 		log.Info("poppy daemon stopped")
 		return nil
+	}
+	if errors.Is(err, agent.ErrBinaryReplaced) {
+		// Non-zero on purpose: units installed before Restart=always only
+		// restart on failure, and a clean exit would leave them down.
+		log.Info("poppy binary replaced; exiting so the service manager starts the new one", "exit", exitReplaced)
+		return exitCode(exitReplaced)
 	}
 	return err
 }
