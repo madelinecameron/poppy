@@ -51,6 +51,7 @@ publishes it on the next successful cycle.
 | `hubCheck.repo` | Path of the hub repository on that machine. Empty derives it from `hubRemote`. |
 | `hubCheck.fsckIntervalSeconds` | Shortest gap between full `git fsck` runs. Default 0, every cycle. |
 | `hubCheck.timeoutSeconds` | Time limit for one check. Default 120. |
+| `mailbox.url` | Mailbox server that session hooks ask for each session's address. `MAILBOX_URL` overrides it. Empty skips the lookup. See [Agent sessions](sessions.md). |
 
 `node_modules`, `vendor`, `.venv`, `target`, and similar directories are always
 skipped. A repository nested inside another is treated as a submodule or a

@@ -49,6 +49,7 @@ poppy find auth-refactor  # which machines have this branch or repository
 poppy restore             # recover the last snapshot of this repository
 poppy grab laptop:api     # bring uncommitted work from another machine here
 poppy secrets             # credentials found in working trees, stashes, and unpushed commits
+poppy sessions --active   # Claude Code and Codex sessions, where they work, how to reach them
 ```
 
 Run `poppy` with no arguments for the full command list.
@@ -59,6 +60,7 @@ Run `poppy` with no arguments for the full command list.
 - [Snapshots, restore, and grab](docs/snapshots.md)
 - [Secret scanning and hooks](docs/secrets.md)
 - [Hub integrity check](docs/hub-check.md)
+- [Agent sessions](docs/sessions.md)
 - [MCP server](docs/mcp.md)
 
 ## Development
