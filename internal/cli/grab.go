@@ -30,7 +30,7 @@ func runGrab(ctx context.Context, args []string) error {
 		branch = fs.Arg(1)
 	}
 
-	cfg, store, err := setupRead()
+	cfg, store, err := setupRead(ctx)
 	if err != nil {
 		return err
 	}

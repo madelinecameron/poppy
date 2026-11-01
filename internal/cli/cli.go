@@ -139,6 +139,9 @@ func setup(ctx context.Context) (config.Config, *hub.Store, error) {
 	if err != nil {
 		return cfg, nil, err
 	}
+	if dir := cfg.HubCopy(); dir != "" {
+		return cfg, nil, fmt.Errorf("this configuration reads the hub copy at %s and publishes nothing; run this from the poppy that keeps it", dir)
+	}
 	store, err := hub.Open(ctx, filepath.Join(config.DataDir(), "hub"), cfg.HubRemote)
 	if err != nil {
 		return cfg, nil, err
@@ -154,10 +157,14 @@ func setup(ctx context.Context) (config.Config, *hub.Store, error) {
 //
 // A hub that is not there is reported rather than treated as an empty fleet,
 // because the two are different answers and only one of them is a number.
-func setupRead() (config.Config, *hub.Store, error) {
+func setupRead(ctx context.Context) (config.Config, *hub.Store, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return cfg, nil, err
+	}
+	if dir := cfg.HubCopy(); dir != "" {
+		store, err := hub.OpenCopy(ctx, dir)
+		return cfg, store, err
 	}
 	dir := filepath.Join(config.DataDir(), "hub")
 	store := hub.OpenRead(dir, cfg.HubRemote)

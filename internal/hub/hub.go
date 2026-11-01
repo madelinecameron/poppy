@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -30,11 +32,23 @@ const Branch = "state"
 // PushRetries bounds how many times a push race is retried.
 const PushRetries = 3
 
-// Store is a local clone of the hub repository.
+// Store is a local clone of the hub repository, or a read-only view of a
+// clone another poppy keeps (see OpenCopy).
 type Store struct {
 	Dir    string
 	Remote string
 	git    *gitx.Runner
+	copy   *copyView
+}
+
+// files is the tree reads see: the working tree of this machine's own clone,
+// or the last commit of a copy taken whole, never a tree half way through a
+// reset.
+func (s *Store) files() fs.FS {
+	if s.copy != nil {
+		return s.copy.files
+	}
+	return os.DirFS(s.Dir)
 }
 
 // Open prepares a local hub repository at dir, creating it when absent.
@@ -64,6 +78,9 @@ func OpenRead(dir, remote string) *Store {
 // empty fleet: it means this machine has never recorded anything, and a
 // reader should say so rather than report a confident zero.
 func (s *Store) Exists() bool {
+	if s.copy != nil {
+		return true
+	}
 	_, err := os.Stat(filepath.Join(s.Dir, ".git"))
 	return err == nil
 }
@@ -131,8 +148,8 @@ func (s *Store) machineDir(machine string) string {
 // forward fields such as the moment a tree became dirty.
 func (s *Store) ReadMachine(machine string) map[string]model.Repo {
 	out := make(map[string]model.Repo)
-	dir := filepath.Join(s.machineDir(machine), "repos")
-	entries, err := os.ReadDir(dir)
+	dir := path.Join("machines", machine, "repos")
+	entries, err := fs.ReadDir(s.files(), dir)
 	if err != nil {
 		return out
 	}
@@ -141,7 +158,7 @@ func (s *Store) ReadMachine(machine string) map[string]model.Repo {
 			continue
 		}
 		var r model.Repo
-		if data, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+		if data, err := fs.ReadFile(s.files(), path.Join(dir, e.Name())); err == nil {
 			if json.Unmarshal(data, &r) == nil {
 				out[r.PathID] = r
 			}
@@ -154,6 +171,9 @@ func (s *Store) ReadMachine(machine string) map[string]model.Repo {
 // A failure means the hub is unreachable, which is reported so callers can
 // mark the view as possibly stale, but is never fatal.
 func (s *Store) Pull(ctx context.Context) error {
+	if s.copy != nil {
+		return s.copy.refresh(ctx)
+	}
 	if s.Remote == "" {
 		return nil
 	}
@@ -198,16 +218,12 @@ func (s *Store) MachineFiles(machine string) ([]string, error) {
 		return nil, fmt.Errorf("invalid machine name %q", machine)
 	}
 	var out []string
-	err := filepath.WalkDir(s.machineDir(machine), func(path string, d os.DirEntry, err error) error {
+	err := fs.WalkDir(s.files(), path.Join("machines", machine), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() {
-			rel, err := filepath.Rel(s.Dir, path)
-			if err != nil {
-				return err
-			}
-			out = append(out, filepath.ToSlash(rel))
+			out = append(out, p)
 		}
 		return nil
 	})
@@ -236,6 +252,9 @@ func stateMessage(machine string) string {
 // publish runs one write-commit-push cycle on this machine's directory. With
 // always false, a write that changes nothing pushes nothing.
 func (s *Store) publish(ctx context.Context, machine string, always bool, msg string, write func() error) (bool, error) {
+	if s.copy != nil {
+		return false, errReadOnlyCopy
+	}
 	var lastErr error
 	for range PushRetries {
 		// Adopt the remote's history before writing so a push race resolves
@@ -303,8 +322,8 @@ func (s *Store) writeDeploys(machine string, records []model.Deploy) error {
 
 // ReadDeploys returns a machine's published deploys, newest first.
 func (s *Store) ReadDeploys(machine string) []model.Deploy {
-	dir := filepath.Join(s.machineDir(machine), "deploys")
-	entries, err := os.ReadDir(dir)
+	dir := path.Join("machines", machine, "deploys")
+	entries, err := fs.ReadDir(s.files(), dir)
 	if err != nil {
 		return nil
 	}
@@ -313,7 +332,7 @@ func (s *Store) ReadDeploys(machine string) []model.Deploy {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := fs.ReadFile(s.files(), path.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
@@ -330,8 +349,8 @@ func (s *Store) ReadDeploys(machine string) []model.Deploy {
 
 // ReadSessions returns a machine's published harness sessions.
 func (s *Store) ReadSessions(machine string) []model.Session {
-	dir := filepath.Join(s.machineDir(machine), "sessions")
-	entries, err := os.ReadDir(dir)
+	dir := path.Join("machines", machine, "sessions")
+	entries, err := fs.ReadDir(s.files(), dir)
 	if err != nil {
 		return nil
 	}
@@ -341,7 +360,7 @@ func (s *Store) ReadSessions(machine string) []model.Session {
 			continue
 		}
 		var sess model.Session
-		if data, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+		if data, err := fs.ReadFile(s.files(), path.Join(dir, e.Name())); err == nil {
 			if json.Unmarshal(data, &sess) == nil && sess.SessionID != "" {
 				if sess.Machine == "" {
 					sess.Machine = machine
@@ -392,11 +411,10 @@ func (s *Store) commit(ctx context.Context, machine, msg string) (bool, error) {
 	return true, nil
 }
 
-// Fleet reads every machine's state from the working tree.
+// Fleet reads every machine's state.
 func (s *Store) Fleet() (model.Fleet, error) {
 	var fleet model.Fleet
-	root := filepath.Join(s.Dir, "machines")
-	entries, err := os.ReadDir(root)
+	entries, err := fs.ReadDir(s.files(), "machines")
 	if errors.Is(err, os.ErrNotExist) {
 		return fleet, nil
 	}
@@ -409,8 +427,7 @@ func (s *Store) Fleet() (model.Fleet, error) {
 			continue
 		}
 		ms := model.MachineState{}
-		manifestPath := filepath.Join(root, e.Name(), "manifest.json")
-		data, err := os.ReadFile(manifestPath)
+		data, err := fs.ReadFile(s.files(), path.Join("machines", e.Name(), "manifest.json"))
 		if err != nil {
 			continue
 		}
@@ -435,7 +452,7 @@ func (s *Store) Fleet() (model.Fleet, error) {
 // forward what the previous cycle recorded. The second return distinguishes a
 // machine that has never published from one whose manifest is all zeroes.
 func (s *Store) ReadManifest(machine string) (model.Manifest, bool) {
-	data, err := os.ReadFile(filepath.Join(s.machineDir(machine), "manifest.json"))
+	data, err := fs.ReadFile(s.files(), path.Join("machines", machine, "manifest.json"))
 	if err != nil {
 		return model.Manifest{}, false
 	}
