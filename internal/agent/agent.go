@@ -74,6 +74,10 @@ type Agent struct {
 	sessionsSeen time.Time
 	// repoIDs remembers the RepoID of session paths outside the scan roots.
 	repoIDs map[string]string
+	// Replaced reports that a new poppy binary has been installed. Run checks
+	// it after each piece of work and returns ErrBinaryReplaced. Nil never
+	// restarts.
+	Replaced func() bool
 }
 
 // Report summarizes one cycle.
@@ -454,6 +458,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.logCycle(a.Cycle(ctx))
 
 	for {
+		// Checked only between pieces of work, so a restart never cuts a
+		// publish short.
+		if a.Replaced != nil && a.Replaced() {
+			return ErrBinaryReplaced
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
