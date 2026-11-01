@@ -26,6 +26,10 @@ type Config struct {
 	// runs local-only: state is still recorded and queryable on this machine,
 	// but nothing is shared with the fleet.
 	HubRemote string `json:"hubRemote"`
+	// HubDir names a hub clone another poppy keeps on this machine. When set,
+	// this configuration only reads: commands read that clone's last commit,
+	// and scan, the daemon and retire refuse to run. POPPY_HUB_DIR overrides it.
+	HubDir string `json:"hubDir,omitempty"`
 	// ScanIntervalSeconds is how often the daemon rescans.
 	ScanIntervalSeconds int `json:"scanIntervalSeconds"`
 	// SkipDirs are additional directory names never descended into.
@@ -267,6 +271,15 @@ func Path() string {
 		return p
 	}
 	return filepath.Join(configHome(), "poppy", "config.json")
+}
+
+// HubCopy returns the hub clone this configuration reads instead of its own,
+// or "" when it keeps its own.
+func (c Config) HubCopy() string {
+	if p := os.Getenv("POPPY_HUB_DIR"); p != "" {
+		return p
+	}
+	return c.HubDir
 }
 
 // DataDir returns the directory holding the local hub clone and agent state.

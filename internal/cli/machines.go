@@ -25,7 +25,7 @@ func runMachines(ctx context.Context, args []string) error {
 		return err
 	}
 
-	cfg, store, err := setupRead()
+	cfg, store, err := setupRead(ctx)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func runMachinesRetire(ctx context.Context, args []string) error {
 		err   error
 	)
 	if *dryRun {
-		cfg, store, err = setupRead()
+		cfg, store, err = setupRead(ctx)
 	} else {
 		cfg, store, err = setup(ctx)
 	}

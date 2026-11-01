@@ -29,7 +29,7 @@ func runSecrets(ctx context.Context, args []string) error {
 		return runStagedScan(ctx)
 	}
 
-	cfg, store, err := setupRead()
+	cfg, store, err := setupRead(ctx)
 	if err != nil {
 		return err
 	}

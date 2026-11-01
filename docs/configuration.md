@@ -23,6 +23,7 @@ publishes it on the next successful cycle.
 | `machine` | Name of this machine in the fleet. Defaults to the hostname. |
 | `roots` | Directories to scan. `~` is expanded. Default `["~/code"]`. |
 | `hubRemote` | Git URL of the shared state repository. Empty means local only. |
+| `hubDir` | A hub clone another poppy keeps on this machine. Set it and this configuration only reads. See [Reading another poppy's hub](#reading-another-poppys-hub). |
 | `scanIntervalSeconds` | How often the agent scans. Default 300. |
 | `skipDirs` | Extra directory names never scanned. |
 | `maxDepth` | How deep below a root to look for repositories. Default 8. |
@@ -86,4 +87,25 @@ poppy init --from-workplace-protocols   # find the manifest over Tailscale
 ## Environment
 
 `POPPY_CONFIG` overrides the config file path. `POPPY_DATA_DIR` overrides where
-local state is kept.
+local state is kept. `POPPY_HUB_DIR` overrides `hubDir`.
+
+## Reading another poppy's hub
+
+A service that only reads the fleet, such as a status board in a container,
+does not need its own clone of the hub. Point `hubDir` (or `POPPY_HUB_DIR`) at
+the clone this machine's poppy daemon already keeps, usually
+`~/.local/share/poppy/hub`, mounted read-only if the service is in a container.
+
+- Reads use that clone's last commit, never its working tree. The daemon
+  resets the tree on every cycle, so a read that walked it could mix two
+  states.
+- poppy writes nothing to the clone and never fetches. It is as current as the
+  daemon's last scan, every `scanIntervalSeconds`.
+- `scan`, the daemon and `machines retire` refuse to run. Publish from the
+  poppy that keeps the clone.
+- Git refuses a repository another account owns. poppy marks the clone safe on
+  its own command line, so the service needs no git configuration for it.
+
+```json
+{ "machine": "workplace-prod-core", "hubDir": "/var/lib/poppy-hub" }
+```

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/madelinecameron/poppy/internal/hub"
+	"github.com/madelinecameron/poppy/internal/model"
 )
 
 // isolate points configuration and state at a temporary directory so a test
@@ -23,7 +24,7 @@ func isolate(t *testing.T) string {
 func TestSetupReadCreatesNoHub(t *testing.T) {
 	dir := isolate(t)
 
-	_, _, err := setupRead()
+	_, _, err := setupRead(context.Background())
 	if err == nil {
 		t.Fatal("setupRead succeeded with no hub present")
 	}
@@ -44,11 +45,42 @@ func TestSetupReadServesAnExistingHub(t *testing.T) {
 		t.Fatalf("open hub: %v", err)
 	}
 
-	_, store, err := setupRead()
+	_, store, err := setupRead(context.Background())
 	if err != nil {
 		t.Fatalf("setupRead: %v", err)
 	}
 	if _, err := store.Fleet(); err != nil {
 		t.Fatalf("fleet: %v", err)
+	}
+}
+
+func TestHubDirReadsAnotherPoppysCopyAndRefusesToPublish(t *testing.T) {
+	dir := isolate(t)
+	owner := filepath.Join(t.TempDir(), "hub")
+	ownerStore, err := hub.Open(context.Background(), owner, "")
+	if err != nil {
+		t.Fatalf("open owner hub: %v", err)
+	}
+	if _, err := ownerStore.Publish(context.Background(), model.Manifest{Machine: "core"}, nil); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	t.Setenv("POPPY_HUB_DIR", owner)
+
+	_, store, err := setupRead(context.Background())
+	if err != nil {
+		t.Fatalf("setupRead: %v", err)
+	}
+	fleet, err := store.Fleet()
+	if err != nil {
+		t.Fatalf("fleet: %v", err)
+	}
+	if len(fleet.Machines) != 1 {
+		t.Errorf("machines = %d, want the owner's one", len(fleet.Machines))
+	}
+	if _, _, err := setup(context.Background()); err == nil || !strings.Contains(err.Error(), owner) {
+		t.Errorf("setup err = %v, want a refusal naming %s", err, owner)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "hub")); !os.IsNotExist(err) {
+		t.Error("a reader of another poppy's copy created a hub of its own")
 	}
 }
