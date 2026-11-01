@@ -217,6 +217,7 @@ type MachineState struct {
 	Manifest Manifest
 	Repos    []Repo
 	Sessions []Session
+	Deploys  []Deploy
 	Live     bool
 }
 
@@ -410,5 +411,43 @@ func (f Fleet) Sessions(filter SessionFilter) []Session {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	return out
+}
+
+// Deploy is one deploy of one service, as houseparty recorded it on the
+// machine that ran it. Stored at machines/<machine>/deploys/<id>.json.
+type Deploy struct {
+	ID       string        `json:"id"`
+	Time     time.Time     `json:"time"`
+	Project  string        `json:"project"`
+	Env      string        `json:"env"`
+	Service  string        `json:"service"`
+	Method   string        `json:"method,omitempty"`
+	Host     string        `json:"host,omitempty"`
+	OK       bool          `json:"ok"`
+	Error    string        `json:"error,omitempty"`
+	Duration time.Duration `json:"duration_ns"`
+	User     string        `json:"user,omitempty"`
+	Machine  string        `json:"machine,omitempty"`
+	Version  string        `json:"houseparty_version,omitempty"`
+	Repo     string        `json:"repo,omitempty"`
+	Branch   string        `json:"branch,omitempty"`
+	Revision string        `json:"revision,omitempty"`
+}
+
+// Ref is the project/env/service the deploy targeted.
+func (d Deploy) Ref() string { return d.Project + "/" + d.Env + "/" + d.Service }
+
+// Deploys returns every machine's deploys at or after since, newest first.
+func (f Fleet) Deploys(since time.Time) []Deploy {
+	var out []Deploy
+	for _, m := range f.Machines {
+		for _, d := range m.Deploys {
+			if !d.Time.Before(since) {
+				out = append(out, d)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Time.After(out[j].Time) })
 	return out
 }

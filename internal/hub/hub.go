@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madelinecameron/poppy/internal/deploys"
 	"github.com/madelinecameron/poppy/internal/gitx"
 	"github.com/madelinecameron/poppy/internal/model"
 	"github.com/madelinecameron/poppy/internal/sessions"
@@ -178,6 +179,12 @@ func (s *Store) PublishSessions(ctx context.Context, machine string, records []m
 	return s.publish(ctx, machine, false, func() error { return s.writeSessions(machine, records) })
 }
 
+// PublishDeploys replaces this machine's deploys in the hub. Like sessions,
+// nothing is pushed when they are unchanged.
+func (s *Store) PublishDeploys(ctx context.Context, machine string, records []model.Deploy) (pushed bool, err error) {
+	return s.publish(ctx, machine, false, func() error { return s.writeDeploys(machine, records) })
+}
+
 // publish runs one write-commit-push cycle on this machine's directory. With
 // always false, a write that changes nothing pushes nothing.
 func (s *Store) publish(ctx context.Context, machine string, always bool, write func() error) (bool, error) {
@@ -229,6 +236,48 @@ func (s *Store) writeSessions(machine string, records []model.Session) error {
 		}
 	}
 	return nil
+}
+
+// writeDeploys replaces this machine's deploys directory, so a deploy pruned
+// locally disappears from the hub too.
+func (s *Store) writeDeploys(machine string, records []model.Deploy) error {
+	dir := filepath.Join(s.machineDir(machine), "deploys")
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	for _, d := range records {
+		if err := writeJSON(filepath.Join(dir, deploys.FileName(d.ID)), d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReadDeploys returns a machine's published deploys, newest first.
+func (s *Store) ReadDeploys(machine string) []model.Deploy {
+	dir := filepath.Join(s.machineDir(machine), "deploys")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []model.Deploy
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		if d, err := deploys.Parse(data); err == nil {
+			if d.Machine == "" {
+				d.Machine = machine
+			}
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Time.After(out[j].Time) })
+	return out
 }
 
 // ReadSessions returns a machine's published harness sessions.
@@ -326,6 +375,7 @@ func (s *Store) Fleet() (model.Fleet, error) {
 		}
 		sort.Slice(ms.Repos, func(i, j int) bool { return ms.Repos[i].Path < ms.Repos[j].Path })
 		ms.Sessions = s.ReadSessions(e.Name())
+		ms.Deploys = s.ReadDeploys(e.Name())
 		fleet.Machines = append(fleet.Machines, ms)
 	}
 	sort.Slice(fleet.Machines, func(i, j int) bool {

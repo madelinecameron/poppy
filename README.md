@@ -61,6 +61,7 @@ Run `poppy` with no arguments for the full command list.
 - [Secret scanning and hooks](docs/secrets.md)
 - [Hub integrity check](docs/hub-check.md)
 - [Agent sessions](docs/sessions.md)
+- [Deploys](docs/deploys.md)
 - [MCP server](docs/mcp.md)
 
 ## Development
