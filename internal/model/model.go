@@ -356,6 +356,10 @@ type SessionRepo struct {
 	Branch    string    `json:"branch,omitempty"`
 	FirstSeen time.Time `json:"firstSeen"`
 	LastSeen  time.Time `json:"lastSeen"`
+	// Heads are the commits HEAD pointed at while the session was here,
+	// oldest first. They tie a session to the pull request and the deploy
+	// that carried its work.
+	Heads []string `json:"heads,omitempty"`
 }
 
 // Active reports whether the session has not ended and was seen within d.

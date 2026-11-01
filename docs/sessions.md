@@ -28,6 +28,12 @@ For Codex, run `poppy session-hook codex` on the same events.
 `SessionEnd` is optional. It is the only event that marks a session ended.
 Without it, a session is judged by when it was last seen.
 
+## Commits
+
+Each repository and branch entry also keeps `heads`: the commits HEAD pointed
+at while the session was there, oldest first, at most 100. They tie a session
+to the pull request that merged its work and the deploy that shipped it.
+
 ## Mailbox address
 
 At `SessionStart` the hook asks the mailbox server for the session's address.
@@ -48,6 +54,7 @@ poppy sessions                         # every session, most recent first
 poppy sessions --active                # seen in the last 30 minutes, not ended
 poppy sessions --repo poppy --branch main
 poppy sessions --active --within 2h
+poppy sessions --repo poppy --json
 ```
 
 The MCP server has the same view as the `sessions` tool.
