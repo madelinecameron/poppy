@@ -137,7 +137,7 @@ func startDaemon(interval time.Duration) error {
 	cmd.Stdin = devnull
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = detachedProcAttr()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func stopDaemon() error {
 		os.Remove(daemonPidPath())
 		return errors.New("no daemon running")
 	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+	if err := terminate(pid); err != nil {
 		return err
 	}
 	os.Remove(daemonPidPath())
@@ -215,7 +215,7 @@ func runningDaemon() (int, bool) {
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
-	if syscall.Kill(pid, 0) != nil {
+	if !alive(pid) {
 		return 0, false
 	}
 	return pid, true

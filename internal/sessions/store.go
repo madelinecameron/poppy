@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/madelinecameron/poppy/internal/config"
@@ -159,12 +158,12 @@ func lock(dir, sessionID string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFile(f); err != nil {
 		f.Close()
 		return nil, err
 	}
 	return func() {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		unlockFile(f)
 		f.Close()
 	}, nil
 }
