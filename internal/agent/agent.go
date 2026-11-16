@@ -74,6 +74,8 @@ type Agent struct {
 	sessionsSeen time.Time
 	// repoIDs remembers the RepoID of session paths outside the scan roots.
 	repoIDs map[string]string
+	// mirrors skips pushes of snapshot refs that have not moved.
+	mirrors *mirror.Pusher
 	// Replaced reports that a new poppy binary has been installed. Run checks
 	// it after each piece of work and returns ErrBinaryReplaced. Nil never
 	// restarts.
@@ -418,6 +420,10 @@ func (a *Agent) sync(ctx context.Context, repos []model.Repo) int {
 		return 0
 	}
 
+	if a.mirrors == nil {
+		a.mirrors = mirror.NewPusher()
+	}
+
 	var (
 		mu     sync.Mutex
 		synced int
@@ -430,7 +436,7 @@ func (a *Agent) sync(ctx context.Context, repos []model.Repo) int {
 			continue
 		}
 		workers.Go(func() {
-			if err := mirror.For(mirrorCfg, r.RepoID).Push(ctx, r.Path, a.Config.Machine); err != nil {
+			if _, err := a.mirrors.Push(ctx, mirror.For(mirrorCfg, r.RepoID), r.Path, a.Config.Machine); err != nil {
 				a.Log.Warn("snapshot sync failed", "repo", r.Name, "err", err)
 				return
 			}

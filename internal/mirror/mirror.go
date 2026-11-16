@@ -105,6 +105,11 @@ func (m *Mirror) Push(ctx context.Context, repoPath, machine string) error {
 	if err := m.Ensure(ctx); err != nil {
 		return fmt.Errorf("prepare mirror: %w", err)
 	}
+	return m.pushRefs(ctx, repoPath, machine)
+}
+
+// pushRefs is Push for a mirror known to exist.
+func (m *Mirror) pushRefs(ctx context.Context, repoPath, machine string) error {
 	g := m.git(repoPath)
 	args := append([]string{"push", "--force", "--prune", m.url()}, machineRefspecs(machine)...)
 	if _, err := g.Run(ctx, args...); err != nil {
