@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -269,7 +270,9 @@ func runInit(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		applyWorkplaceProtocols(&cfg, m)
+		if err := applyWorkplaceProtocols(&cfg, m); err != nil {
+			return err
+		}
 	}
 	if err := config.Save(cfg); err != nil {
 		return err
@@ -291,18 +294,7 @@ func runInit(ctx context.Context, args []string) error {
 // file, or discovers it over the tailnet.
 func loadWorkplaceProtocols(file string, discover bool) (*discovery.Manifest, error) {
 	if file != "" {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			return nil, err
-		}
-		m, err := discovery.Parse(data)
-		if err != nil {
-			return nil, err
-		}
-		if err := m.Validate(); err != nil {
-			return nil, err
-		}
-		return m, nil
+		return discovery.Load(file)
 	}
 	if !tailnet.Available() {
 		return nil, fmt.Errorf("tailscale CLI not installed; pass --workplace-protocols-file to read a local manifest")
@@ -314,17 +306,53 @@ func loadWorkplaceProtocols(file string, discover bool) (*discovery.Manifest, er
 	return discovery.Resolve(st, "", discovery.SSHReader(""))
 }
 
-// applyWorkplaceProtocols fills hub and mirror from a workplace protocol
-// manifest, leaving an explicit --hub in place.
-func applyWorkplaceProtocols(cfg *config.Config, m *discovery.Manifest) {
-	if m.Hub.Remote != "" && cfg.HubRemote == "" {
-		cfg.HubRemote = m.Hub.Remote
+// applyWorkplaceProtocols fills hub and mirror from the manifest's "hub" and
+// "mirror" services, leaving an explicit --hub in place.
+func applyWorkplaceProtocols(cfg *config.Config, m *discovery.Manifest) error {
+	if hub, ok := m.Service("hub"); ok && cfg.HubRemote == "" {
+		cfg.HubRemote = hub.URL
 	}
-	if m.Mirror.Dir != "" {
-		cfg.Snapshot.Enabled = true
-		cfg.Snapshot.Mirror.Enabled = true
-		cfg.Snapshot.Mirror.Host = m.Mirror.Host
-		cfg.Snapshot.Mirror.Dir = m.Mirror.Dir
+	mirror, ok := m.Service("mirror")
+	if !ok {
+		return nil
+	}
+	host, dir, err := mirrorTarget(mirror.URL)
+	if err != nil {
+		return fmt.Errorf("service mirror: %w", err)
+	}
+	cfg.Snapshot.Enabled = true
+	cfg.Snapshot.Mirror.Enabled = true
+	cfg.Snapshot.Mirror.Host = host
+	cfg.Snapshot.Mirror.Dir = dir
+	return nil
+}
+
+// mirrorTarget splits a mirror URL into the SSH target and directory poppy
+// pushes to: ssh://user@host/dir becomes "user@host" and "/dir", and
+// file:///dir becomes a local "/dir".
+func mirrorTarget(raw string) (host, dir string, err error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", "", err
+	}
+	dir = u.Path
+	if strings.HasPrefix(dir, "/~") {
+		dir = dir[1:]
+	}
+	switch u.Scheme {
+	case "file":
+		return "", dir, nil
+	case "ssh":
+		host = u.Hostname()
+		if u.User != nil {
+			host = u.User.Username() + "@" + host
+		}
+		if host == "" || dir == "" {
+			return "", "", fmt.Errorf("%q needs a host and a directory", raw)
+		}
+		return host, dir, nil
+	default:
+		return "", "", fmt.Errorf("%q: use an ssh:// or file:// URL", raw)
 	}
 }
 
