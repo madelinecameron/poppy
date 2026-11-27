@@ -82,14 +82,24 @@ login.
 ## Configuring from a manifest
 
 A fleet that already describes its hub and mirror in a
-`workplace-protocols.yaml` file can configure poppy from it:
+`workplace-protocols.yaml` file can configure poppy from it. poppy reads two
+services from the manifest:
+
+```yaml
+services:
+  - name: hub
+    url: ssh://fleet@hub-host/srv/poppy-hub.git
+  - name: mirror
+    url: ssh://mads@hub-host/srv/poppy-mirrors   # or file:///srv/poppy-mirrors
+```
 
 ```sh
 poppy init --workplace-protocols-file ./workplace-protocols.yaml
 poppy init --from-workplace-protocols   # find the manifest over Tailscale
 ```
 
-`--from-workplace-protocols` needs the `tailscale` CLI.
+`--from-workplace-protocols` reads the manifest over SSH from the node tagged
+`tag:workplace`, and needs the `tailscale` CLI.
 
 ## Environment
 

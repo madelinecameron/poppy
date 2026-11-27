@@ -2,7 +2,7 @@ module github.com/madelinecameron/poppy
 
 go 1.26.0
 
-require github.com/madelinecameron/workplace-protocols v0.7.0
+require github.com/madelinecameron/workplace-protocols v0.8.0
 
 require (
 	golang.org/x/sys v0.49.0
